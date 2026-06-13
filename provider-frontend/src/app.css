@@ -1,18 +1,39 @@
 @import "tailwindcss";
 
 @theme {
-  /* Neobrutalism core color tokens */
-  --color-nb-black: #000000;
-  --color-nb-white: #ffffff;
-  --color-nb-accent: #f5c518;
-  --color-nb-surface: #f0ede8;
-  --color-nb-muted: #d4d0c9;
-  --color-nb-danger: #ff4d4d;
-  --color-nb-success: #22c55e;
+  /* Provider portal — warm red tint (light mode) */
+  --color-nb-black: #3d1414;
+  --color-nb-white: #fff9f8;
+  --color-nb-accent: #e05252;
+  --color-nb-surface: #faeeec;
+  --color-nb-muted: #edd8d4;
+  --color-nb-danger: #dc2626;
+  --color-nb-success: #15803d;
+
+  /* Semantic text colors */
+  --color-nb-text-secondary: #8b5050;
+  --color-nb-text-tertiary: #b07878;
 
   /* Typography */
   --font-sans: 'Space Grotesk', 'Inter', ui-sans-serif, system-ui;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* Dark mode: deep red palette */
+html.dark {
+  --color-nb-black: #f2dede;
+  --color-nb-white: #140808;
+  --color-nb-surface: #240e0e;
+  --color-nb-muted: #381616;
+  --color-nb-accent: #f06a6a;
+  --color-nb-text-secondary: #c49a9a;
+  --color-nb-text-tertiary: #906868;
+  color-scheme: dark;
+}
+
+body {
+  color: var(--color-nb-black);
+  background-color: var(--color-nb-white);
 }
 
 /* Neobrutalism utility classes */

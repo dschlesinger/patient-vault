@@ -16,15 +16,27 @@
 
   {#if form?.pairingCode}
     <Card class="mb-6 border-[--color-nb-accent]">
-      <p class="font-bold text-lg mb-1">New pairing code</p>
+      <div class="flex items-center justify-between mb-1">
+        <p class="font-bold text-lg">New pairing code</p>
+        <div class="flex gap-2">
+          <form method="POST" action="?/refresh_code">
+            <input type="hidden" name="old_code" value={form.pairingCode} />
+            <Button type="submit" variant="secondary">Refresh</Button>
+          </form>
+          <form method="POST" action="?/cancel_code">
+            <input type="hidden" name="old_code" value={form.pairingCode} />
+            <Button type="submit" variant="secondary">Cancel</Button>
+          </form>
+        </div>
+      </div>
       <p class="text-5xl font-black tracking-widest text-center py-4">{form.pairingCode}</p>
-      <p class="text-sm text-gray-600 text-center">Share this code with the patient in person. Expires in 10 minutes.</p>
+      <p class="text-sm text-[--color-nb-text-secondary] text-center">Share this code with the patient in person. Expires in 10 minutes.</p>
     </Card>
   {/if}
 
   {#if data.patients.length === 0}
     <Card>
-      <p class="text-gray-500 font-medium">No patients linked yet. Generate a pairing code to register your first patient.</p>
+      <p class="text-[--color-nb-text-secondary] font-medium">No patients linked yet. Generate a pairing code to register your first patient.</p>
     </Card>
   {:else}
     <div class="flex flex-col gap-3">
@@ -36,9 +48,9 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="font-bold text-lg">{patient.patient_name}</p>
-              <p class="text-xs text-gray-500 font-mono mt-0.5">ID: {patient.usb_id.slice(0, 16)}…</p>
+              <p class="text-xs text-[--color-nb-text-secondary] font-mono mt-0.5">ID: {patient.usb_id.slice(0, 16)}…</p>
             </div>
-            <p class="text-sm text-gray-500">Registered {new Date(patient.registered_at).toLocaleDateString()}</p>
+            <p class="text-sm text-[--color-nb-text-secondary]">Registered {new Date(patient.registered_at).toLocaleDateString()}</p>
           </div>
         </a>
       {/each}

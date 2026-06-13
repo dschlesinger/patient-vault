@@ -9,7 +9,7 @@ export const load: LayoutServerLoad = async ({ cookies }) => {
   if (MOCK_MODE) return { session: null };
 
   const supabase = createSupabaseServerClient(cookies);
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) redirect(303, '/');
-  return { session };
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect(303, '/');
+  return {};
 };

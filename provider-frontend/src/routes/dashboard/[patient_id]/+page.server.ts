@@ -10,7 +10,7 @@ export const load: PageServerLoad = async ({ cookies, params }) => {
   if (MOCK_MODE) {
     const patient = MOCK_PATIENTS_FULL.find((p) => p.usb_id === params.patient_id);
     if (!patient) error(404, 'Patient not found');
-    return { patient, sentLog: MOCK_SENT_LOG[params.patient_id] ?? [] };
+    return { patient, sentLog: MOCK_SENT_LOG[params.patient_id] ?? [], providerId: 'mock-provider-id' };
   }
 
   const supabase = createSupabaseServerClient(cookies);
@@ -32,7 +32,7 @@ export const load: PageServerLoad = async ({ cookies, params }) => {
     .eq('provider_id', user!.id)
     .order('sent_at', { ascending: false });
 
-  return { patient, sentLog: sentLog ?? [] };
+  return { patient, sentLog: sentLog ?? [], providerId: user!.id };
 };
 
 export const actions: Actions = {

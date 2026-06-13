@@ -44,8 +44,10 @@
    * so they are encrypted and never visible to the server.
    * Layout: [uint32 metaLen][utf8 JSON {name,type}][raw file bytes].
    */
-  function packDocument(file: File, bytes: Uint8Array): Uint8Array {
-    const meta = new TextEncoder().encode(JSON.stringify({ name: file.name, type: file.type }));
+  function packDocument(file: File, bytes: Uint8Array, providerId: string): Uint8Array {
+    const meta = new TextEncoder().encode(
+      JSON.stringify({ name: file.name, type: file.type, provider_id: providerId })
+    );
     const out = new Uint8Array(4 + meta.length + bytes.length);
     new DataView(out.buffer).setUint32(0, meta.length);
     out.set(meta, 4);
@@ -61,6 +63,7 @@
       const blob = await encryptJson({
         type: 'message',
         content: messageText,
+        provider_id: data.providerId,
         sent_at: new Date().toISOString()
       });
       formData.delete('content');
@@ -87,6 +90,7 @@
       const blob = await encryptJson({
         type: 'questionnaire',
         questions: cleaned,
+        provider_id: data.providerId,
         sent_at: new Date().toISOString()
       });
       formData.delete('question');
@@ -122,7 +126,7 @@
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const recipientKey = parsePublicKey(data.patient.public_key);
-      const packed = packDocument(file, bytes);
+      const packed = packDocument(file, bytes, data.providerId);
       const blobStr = serializeBlob(await encryptPayload(packed, recipientKey));
       formData.delete('file');
       formData.set(
