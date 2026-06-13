@@ -44,23 +44,24 @@ export async function encryptPayload(
   plaintext: Uint8Array,
   recipientPublicKey: HybridPublicKey
 ): Promise<EncryptedBlob> {
-  // 1. Ephemeral X25519 key exchange
-  const ephemeralKeyPair = await crypto.subtle.generateKey(
-    { name: 'ECDH', namedCurve: 'X25519' },
-    true,
-    ['deriveKey', 'deriveBits']
-  );
+  // 1. Ephemeral X25519 key exchange.
+  // X25519 is exposed in the Web Crypto API under the algorithm name "X25519"
+  // (WICG Secure Curves), not via ECDH + namedCurve.
+  const ephemeralKeyPair = (await crypto.subtle.generateKey({ name: 'X25519' }, true, [
+    'deriveKey',
+    'deriveBits'
+  ])) as CryptoKeyPair;
 
   const recipientX25519CryptoKey = await crypto.subtle.importKey(
     'raw',
     recipientPublicKey.x25519.buffer as ArrayBuffer,
-    { name: 'ECDH', namedCurve: 'X25519' },
+    { name: 'X25519' },
     false,
     []
   );
 
   const ssClassical = await crypto.subtle.deriveBits(
-    { name: 'ECDH', public: recipientX25519CryptoKey },
+    { name: 'X25519', public: recipientX25519CryptoKey },
     ephemeralKeyPair.privateKey,
     256
   );

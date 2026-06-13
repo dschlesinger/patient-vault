@@ -14,13 +14,13 @@ export const load: PageServerLoad = async ({ cookies, params }) => {
   }
 
   const supabase = createSupabaseServerClient(cookies);
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { user } } = await supabase.auth.getUser();
 
   const { data: patient } = await supabase
     .from('patient_provider_links')
     .select('usb_id, patient_name, registered_at, public_key')
     .eq('usb_id', params.patient_id)
-    .eq('provider_id', session!.user.id)
+    .eq('provider_id', user!.id)
     .single();
 
   if (!patient) error(404, 'Patient not found');
@@ -29,22 +29,25 @@ export const load: PageServerLoad = async ({ cookies, params }) => {
     .from('provider_sent_log')
     .select('id, type, sent_at, payload_ref_id')
     .eq('usb_id', params.patient_id)
-    .eq('provider_id', session!.user.id)
+    .eq('provider_id', user!.id)
     .order('sent_at', { ascending: false });
 
   return { patient, sentLog: sentLog ?? [] };
 };
 
 export const actions: Actions = {
-  // NOTE: In production, content is encrypted client-side (hybrid.ts) before
-  // the form is submitted. The encrypted_blob field carries the ciphertext.
-  // For the scaffold, form fields carry plaintext and are stored as-is in mock mode.
+  // Content is encrypted client-side (hybrid.ts) before the form is submitted:
+  // messages/questionnaires arrive as `encrypted_blob`, documents as an
+  // `encrypted_file` whose bytes are an opaque ciphertext (filename + mime are
+  // packed inside the encryption, never visible to the server). In mock mode the
+  // actions short-circuit and store nothing.
 
   send_message: async ({ cookies, params, request }) => {
     if (MOCK_MODE) return { success: true };
 
     const supabase = createSupabaseServerClient(cookies);
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return fail(401, { error: 'Not authenticated.' });
     const formData = await request.formData();
     const encryptedBlob = formData.get('encrypted_blob') as string;
 
@@ -59,7 +62,7 @@ export const actions: Actions = {
     if (insertError || !payload) return fail(500, { error: 'Failed to store message.' });
 
     await supabase.from('provider_sent_log').insert({
-      provider_id: session!.user.id,
+      provider_id: user.id,
       usb_id: params.patient_id,
       type: 'message',
       payload_ref_id: payload.id
@@ -72,7 +75,8 @@ export const actions: Actions = {
     if (MOCK_MODE) return { success: true };
 
     const supabase = createSupabaseServerClient(cookies);
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return fail(401, { error: 'Not authenticated.' });
     const formData = await request.formData();
 
     // questions[] are encrypted client-side into a single blob before submission
@@ -88,7 +92,7 @@ export const actions: Actions = {
     if (insertError || !payload) return fail(500, { error: 'Failed to store questionnaire.' });
 
     await supabase.from('provider_sent_log').insert({
-      provider_id: session!.user.id,
+      provider_id: user.id,
       usb_id: params.patient_id,
       type: 'questionnaire',
       payload_ref_id: payload.id
@@ -101,7 +105,8 @@ export const actions: Actions = {
     if (MOCK_MODE) return { success: true };
 
     const supabase = createSupabaseServerClient(cookies);
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return fail(401, { error: 'Not authenticated.' });
     const formData = await request.formData();
     const encryptedFile = formData.get('encrypted_file') as File;
 
@@ -126,7 +131,7 @@ export const actions: Actions = {
 
     await supabase.from('payloads').update({ storage_path: storagePath }).eq('id', payload.id);
     await supabase.from('provider_sent_log').insert({
-      provider_id: session!.user.id,
+      provider_id: user.id,
       usb_id: params.patient_id,
       type: 'document',
       payload_ref_id: payload.id
