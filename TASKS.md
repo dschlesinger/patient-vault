@@ -19,7 +19,7 @@
 - [x] SQL migration file(s) for all tables (`providers`, `pairing_codes`, `patient_provider_links`, `payloads`, `provider_sent_log`) + RLS policies — applied to live Supabase (`initial_schema`)
   - [x] Follow-up migration `payloads_public_read_policy`: added the missing `payloads` SELECT policy (`using (true)`) — without it `INSERT ... RETURNING` was blocked by RLS
 - [x] Supabase Storage bucket creation (`documents`) — created in `initial_schema`
-  - [ ] **Storage read policy mismatch**: `documents` SELECT policy currently requires `auth.uid() IS NOT NULL`, but PROJECT.md specifies the bucket is publicly readable (USB app downloads with no auth; encryption is the access control). Needs an anon-readable policy before USB document download works.
+  - [x] **Storage read policy** (migration `documents_bucket_public_read`): bucket set `public = true` and SELECT policy replaced with `documents_public_read` (`using (bucket_id = 'documents')`); uploads stay provider-only. Verified an encrypted document downloads anonymously via the public object URL (HTTP 200, ciphertext bytes) — matches PROJECT.md's "encryption is the access control" design.
 
 ---
 
