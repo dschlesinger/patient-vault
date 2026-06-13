@@ -36,12 +36,46 @@ export const load: PageServerLoad = async ({ cookies, params }) => {
 };
 
 export const actions: Actions = {
+  // NOTE: In production, content is encrypted client-side (hybrid.ts) before
+  // the form is submitted. The encrypted_blob field carries the ciphertext.
+  // For the scaffold, form fields carry plaintext and are stored as-is in mock mode.
+
+  send_message: async ({ cookies, params, request }) => {
+    if (MOCK_MODE) return { success: true };
+
+    const supabase = createSupabaseServerClient(cookies);
+    const { data: { session } } = await supabase.auth.getSession();
+    const formData = await request.formData();
+    const encryptedBlob = formData.get('encrypted_blob') as string;
+
+    if (!encryptedBlob) return fail(400, { error: 'Missing encrypted payload.' });
+
+    const { data: payload, error: insertError } = await supabase
+      .from('payloads')
+      .insert({ usb_id: params.patient_id, type: 'message', encrypted_blob: encryptedBlob })
+      .select('id')
+      .single();
+
+    if (insertError || !payload) return fail(500, { error: 'Failed to store message.' });
+
+    await supabase.from('provider_sent_log').insert({
+      provider_id: session!.user.id,
+      usb_id: params.patient_id,
+      type: 'message',
+      payload_ref_id: payload.id
+    });
+
+    return { success: true };
+  },
+
   send_questionnaire: async ({ cookies, params, request }) => {
     if (MOCK_MODE) return { success: true };
 
     const supabase = createSupabaseServerClient(cookies);
     const { data: { session } } = await supabase.auth.getSession();
     const formData = await request.formData();
+
+    // questions[] are encrypted client-side into a single blob before submission
     const encryptedBlob = formData.get('encrypted_blob') as string;
     if (!encryptedBlob) return fail(400, { error: 'Missing encrypted payload.' });
 
@@ -70,6 +104,7 @@ export const actions: Actions = {
     const { data: { session } } = await supabase.auth.getSession();
     const formData = await request.formData();
     const encryptedFile = formData.get('encrypted_file') as File;
+
     if (!encryptedFile) return fail(400, { error: 'Missing encrypted file.' });
 
     const { data: payload, error: insertError } = await supabase
