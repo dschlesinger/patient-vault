@@ -22,8 +22,9 @@ tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 
 # Cryptography (pure Rust — no C dependencies, Tails OS compatible)
-ml-kem = { version = "0.3", features = ["zeroize"] }
-x25519-dalek = { version = "2", features = ["zeroize"] }
+ml-kem = { version = "0.3", features = ["zeroize", "getrandom"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+x25519-dalek = { version = "2", features = ["zeroize", "static_secrets"] }
 aes-gcm = "0.10"
 hkdf = "0.12"
 sha2 = "0.10"
