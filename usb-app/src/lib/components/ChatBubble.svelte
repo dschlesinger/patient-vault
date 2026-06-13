@@ -17,10 +17,10 @@
       : 'bg-[--color-nb-accent] nb-shadow'}"
   >
     {#if isAssistant}
-      <p class="text-xs font-bold text-gray-500 mb-1">PatientVault AI</p>
+      <p class="text-xs font-bold text-[--color-nb-text-secondary] mb-1">PatientVault AI</p>
     {/if}
     <p class="font-sans">{message.content}</p>
-    <p class="text-xs text-gray-400 mt-1 text-right">
+    <p class="text-xs text-[--color-nb-text-tertiary] mt-1 text-right">
       {new Date(message.timestamp).toLocaleTimeString()}
     </p>
   </div>

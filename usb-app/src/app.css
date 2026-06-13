@@ -1,18 +1,39 @@
 @import "tailwindcss";
 
 @theme {
-  /* Neobrutalism core color tokens — kept in sync with provider-frontend/src/app.css */
-  --color-nb-black: #000000;
-  --color-nb-white: #ffffff;
-  --color-nb-accent: #f5c518;
-  --color-nb-surface: #f0ede8;
-  --color-nb-muted: #d4d0c9;
-  --color-nb-danger: #ff4d4d;
-  --color-nb-success: #22c55e;
+  /* USB app — cool blue tint (light mode) */
+  --color-nb-black: #0c1829;
+  --color-nb-white: #f6faff;
+  --color-nb-accent: #3b82f6;
+  --color-nb-surface: #e8f0fb;
+  --color-nb-muted: #cddbf0;
+  --color-nb-danger: #ef4444;
+  --color-nb-success: #16a34a;
+
+  /* Semantic text colors */
+  --color-nb-text-secondary: #4a6280;
+  --color-nb-text-tertiary: #6a84a0;
 
   /* Typography */
   --font-sans: 'Space Grotesk', 'Inter', ui-sans-serif, system-ui;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* Dark mode: deep blue palette */
+html.dark {
+  --color-nb-black: #d8e8f8;
+  --color-nb-white: #080e18;
+  --color-nb-surface: #101c30;
+  --color-nb-muted: #182840;
+  --color-nb-accent: #60a5fa;
+  --color-nb-text-secondary: #90a8c4;
+  --color-nb-text-tertiary: #608098;
+  color-scheme: dark;
+}
+
+body {
+  color: var(--color-nb-black);
+  background-color: var(--color-nb-white);
 }
 
 @layer utilities {

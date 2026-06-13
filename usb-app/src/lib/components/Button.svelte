@@ -23,7 +23,7 @@
   const variants = {
     primary: 'bg-[--color-nb-accent] text-[--color-nb-black]',
     secondary: 'bg-[--color-nb-white] text-[--color-nb-black]',
-    danger: 'bg-[--color-nb-danger] text-white'
+    danger: 'bg-[--color-nb-danger] text-[--color-nb-black]'
   };
 </script>
 

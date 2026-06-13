@@ -2,27 +2,61 @@
 // Each function corresponds to a #[tauri::command] in src-tauri/src/.
 
 import { invoke } from '@tauri-apps/api/core';
+import { isTauriAvailable, requireTauri } from '$lib/tauri/env';
+
+export { isTauriAvailable, TauriUnavailableError } from '$lib/tauri/env';
+
+async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  requireTauri();
+  return invoke<T>(cmd, args);
+}
 
 // ── Vault & identity ──────────────────────────────────────────────────────────
 
 /** Returns true if a keypair and vault already exist in Persistent Storage. */
 export async function vaultExists(): Promise<boolean> {
-  return invoke<boolean>('vault_exists');
+  return tauriInvoke<boolean>('vault_exists');
 }
 
 /** Generate and persist a new hybrid X25519 + ML-KEM-768 keypair (first-run only). */
 export async function generateKeypair(): Promise<void> {
-  return invoke('generate_keypair');
+  return tauriInvoke('generate_keypair');
 }
 
-/** Return the patient's usb_id (SHA-256 of combined public key), base64-encoded. */
+/** Return the patient's usb_id (SHA-256 of combined public key), hex-encoded. */
 export async function getUsbId(): Promise<string> {
-  return invoke<string>('get_usb_id');
+  return tauriInvoke<string>('get_usb_id');
 }
 
 /** Return the patient's hybrid public key as a base64-encoded blob. */
 export async function getPublicKey(): Promise<string> {
-  return invoke<string>('get_public_key');
+  return tauriInvoke<string>('get_public_key');
+}
+
+export interface RegistrationState {
+  patient_name: string;
+  registered_at: string;
+}
+
+export interface ProviderLink {
+  provider_id: string;
+  patient_name: string;
+  registered_at: string;
+}
+
+/** Register with a provider using a 6-digit pairing code shown in the provider portal. */
+export async function registerPatient(patientName: string, providerCode: string): Promise<void> {
+  return tauriInvoke('register_patient', { patientName, providerCode });
+}
+
+/** List all providers this device is paired with. */
+export async function listProviderLinks(): Promise<ProviderLink[]> {
+  return tauriInvoke<ProviderLink[]>('list_provider_links');
+}
+
+/** Return first paired provider (legacy). Prefer listProviderLinks(). */
+export async function getRegistrationState(): Promise<RegistrationState | null> {
+  return tauriInvoke<RegistrationState | null>('get_registration_state');
 }
 
 export interface VaultEntry {
@@ -40,11 +74,11 @@ export interface VaultFilter {
 }
 
 export async function writeVaultEntry(entry: Omit<VaultEntry, 'id' | 'created_at'>): Promise<void> {
-  return invoke('write_vault_entry', { entry });
+  return tauriInvoke('write_vault_entry', { entry });
 }
 
 export async function readVaultEntries(filter: VaultFilter): Promise<VaultEntry[]> {
-  return invoke<VaultEntry[]>('read_vault_entries', { filter });
+  return tauriInvoke<VaultEntry[]>('read_vault_entries', { filter });
 }
 
 // ── Payload fetching ───────────────────────────────────────────────────────────
@@ -61,7 +95,7 @@ export interface DecryptedPayload {
 
 /** Fetch and decrypt new payloads from Supabase, persist to local vault. */
 export async function syncPayloads(): Promise<number> {
-  return invoke<number>('sync_payloads');
+  return tauriInvoke<number>('sync_payloads');
 }
 
 export interface PayloadFilter {
@@ -70,23 +104,24 @@ export interface PayloadFilter {
 }
 
 export async function readPayloads(filter: PayloadFilter): Promise<DecryptedPayload[]> {
-  return invoke<DecryptedPayload[]>('read_payloads', { filter });
+  return tauriInvoke<DecryptedPayload[]>('read_payloads', { filter });
 }
 
 // ── LLM ───────────────────────────────────────────────────────────────────────
 
 /** Start a new LLM session with the given system prompt. Tokens stream via Tauri event "llm://token". */
 export async function llmStartSession(systemPrompt: string): Promise<void> {
-  return invoke('llm_start_session', { systemPrompt });
+  return tauriInvoke('llm_start_session', { systemPrompt });
 }
 
 /** Send a user message to the running LLM session. Response streams via "llm://token". */
 export async function llmSendMessage(message: string): Promise<void> {
-  return invoke('llm_send_message', { message });
+  return tauriInvoke('llm_send_message', { message });
 }
 
 /** Stop the running LLM session and subprocess. */
 export async function llmStopSession(): Promise<void> {
+  if (!isTauriAvailable()) return;
   return invoke('llm_stop_session');
 }
 
@@ -94,17 +129,17 @@ export async function llmStopSession(): Promise<void> {
 
 /** Start streaming STT (whisper.cpp). Partial transcripts stream via "stt://partial". */
 export async function sttStartStream(): Promise<void> {
-  return invoke('stt_start_stream');
+  return tauriInvoke('stt_start_stream');
 }
 
 /** Stop streaming STT and return the final transcript. */
 export async function sttStopStream(): Promise<string> {
-  return invoke<string>('stt_stop_stream');
+  return tauriInvoke<string>('stt_stop_stream');
 }
 
 /** Batch-transcribe a recorded audio file (for meeting recordings). */
 export async function sttTranscribeFile(path: string): Promise<string> {
-  return invoke<string>('stt_transcribe_file', { path });
+  return tauriInvoke<string>('stt_transcribe_file', { path });
 }
 
 // ── TTS ───────────────────────────────────────────────────────────────────────
@@ -113,10 +148,11 @@ export type TtsLanguage = 'en' | 'es' | 'zh';
 
 /** Synthesize text to speech. Audio streams via "tts://audio" Tauri event. */
 export async function ttsSynthesize(text: string, lang: TtsLanguage): Promise<void> {
-  return invoke('tts_synthesize', { text, lang });
+  return tauriInvoke('tts_synthesize', { text, lang });
 }
 
 /** Stop current TTS playback. */
 export async function ttsStop(): Promise<void> {
+  if (!isTauriAvailable()) return;
   return invoke('tts_stop');
 }

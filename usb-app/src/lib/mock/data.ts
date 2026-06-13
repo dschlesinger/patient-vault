@@ -1,6 +1,8 @@
 // Mock chat messages for browser-only development (no Tauri / no Rust).
 
 import type { ChatMessage } from '$lib/stores/chat.svelte';
+import type { DecryptedPayload } from '$lib/tauri/commands';
+import type { ProviderLink } from '$lib/tauri/commands';
 
 function msg(role: ChatMessage['role'], content: string, minutesAgo: number): ChatMessage {
   return {
@@ -31,4 +33,62 @@ export const MOCK_PROVIDER_MESSAGES: ChatMessage[] = [
   msg('assistant', "There is one meeting transcript from the April 14th visit. It covers a discussion of the medication adjustment and a follow-up plan for blood pressure monitoring. Would you like me to summarize it?", 6),
   msg('user', "Yes please.", 5),
   msg('assistant', "April 14th summary: Patient reported improved readings after dose adjustment. Agreed to monitor twice daily for 4 weeks and report outliers. Next steps were a lab panel (ordered) and a follow-up in 8 weeks — which aligns with today's visit.", 3)
+];
+
+export const MOCK_PROVIDER_LINKS: ProviderLink[] = [
+  {
+    provider_id: 'provider-patel',
+    patient_name: 'Maria Gonzalez',
+    registered_at: String(Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60)
+  }
+];
+
+export const MOCK_PAYLOADS: DecryptedPayload[] = [
+  {
+    id: 'mock-msg-1',
+    type: 'message',
+    content: JSON.stringify({
+      content:
+        'Hi Maria — please review the attached lab results before your visit on Friday. Let me know if you have any questions.'
+    }),
+    provider_id: 'provider-patel',
+    received_at: new Date(Date.now() - 2 * 24 * 60 * 60_000).toISOString()
+  },
+  {
+    id: 'mock-quest-1',
+    type: 'questionnaire',
+    content: JSON.stringify({
+      questions: [
+        'On a scale of 1–10, how would you rate your pain level over the past week?',
+        'Have you been taking your blood pressure medication consistently?',
+        'Any new symptoms since your last visit?'
+      ]
+    }),
+    provider_id: 'provider-patel',
+    received_at: new Date(Date.now() - 1 * 24 * 60 * 60_000).toISOString()
+  },
+  {
+    id: 'mock-doc-1',
+    type: 'document',
+    content: JSON.stringify({
+      name: 'Lab_Results_March_2026.pdf',
+      type: 'application/pdf',
+      path: '.vault/documents/mock-doc-1/Lab_Results_March_2026.pdf',
+      size: 245_760
+    }),
+    provider_id: 'provider-patel',
+    received_at: new Date(Date.now() - 12 * 60 * 60_000).toISOString()
+  },
+  {
+    id: 'mock-doc-2',
+    type: 'document',
+    content: JSON.stringify({
+      name: 'Visit_Summary_April.pdf',
+      type: 'application/pdf',
+      path: '.vault/documents/mock-doc-2/Visit_Summary_April.pdf',
+      size: 128_400
+    }),
+    provider_id: 'provider-patel',
+    received_at: new Date(Date.now() - 6 * 60 * 60_000).toISOString()
+  }
 ];
