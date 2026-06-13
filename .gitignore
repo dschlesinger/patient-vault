@@ -18,6 +18,9 @@ usb-app/src-tauri/gen/
 .env.*.local
 !.env.example
 
+# Local vault runtime data — NEVER commit (contains private keys + decrypted PHI)
+.vault/
+
 # Model assets (large binary files — download separately per SETUP.md)
 *.gguf
 *.onnx
