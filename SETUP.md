@@ -75,6 +75,61 @@ pnpm check:provider
 pnpm check:usb
 ```
 
+### Dev logging
+
+Set `LOG_FOLDER` in `provider-frontend/.env` (see `.env.example`). Both apps write there:
+
+| File | App | Contents |
+|---|---|---|
+| `frontend.log` | Provider frontend | HTTP requests + `console.*` output |
+| `usb-app.log` | USB app (Rust) | `tracing::info!` and above |
+
+The provider frontend reads `LOG_FOLDER` through SvelteKit's `$env/dynamic/private`. The USB app uses the shell `LOG_FOLDER` if set; otherwise it loads the value from `provider-frontend/.env` automatically.
+
+Override log verbosity for the USB app with `RUST_LOG` (default: `info`).
+
+The USB app also reads `PUBLIC_SUPABASE_URL` and `PUBLIC_SUPABASE_ANON_KEY` from `provider-frontend/.env` when sync/register runs (same file as the provider frontend).
+
+### Patient–provider pairing
+
+Pairing links a USB device's cryptographic identity to a provider account via a one-time 6-digit code.
+
+**1. Apply migrations** (required once — includes `register_patient` RPC):
+
+```bash
+cd provider-frontend
+pnpm dlx supabase link --project-ref <your-project-ref>
+pnpm dlx supabase db push
+```
+
+Or paste each file in `provider-frontend/supabase/migrations/` into Supabase Dashboard → SQL Editor (filename order).
+
+**2. Provider portal**
+
+```bash
+pnpm dev:provider
+```
+
+- Open http://localhost:5173
+- **Create account** (or sign in)
+- Click **+ Pair new patient** — note the 6-digit code (expires in 10 minutes)
+
+**3. USB app**
+
+```bash
+pnpm dev:usb
+```
+
+- **Generate identity** (first run only)
+- Enter your name + the 6-digit code → **Register with provider**
+- You should see **✓ Paired with provider** on the home screen
+- The patient now appears on the provider dashboard
+
+**4. Verify**
+
+- Provider dashboard lists the patient by name
+- Send a message from the provider portal → USB app **Sync** → **Messages** tab
+
 ---
 
 ## Building

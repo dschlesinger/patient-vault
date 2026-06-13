@@ -1,5 +1,8 @@
 # PatientVault — Implementation Checklist
 
+> Last verified against source: 2026-06-13. Items are checked only after
+> confirming the actual implementation, not just intent.
+
 ## Provider Web Frontend
 
 **Encryption wiring (missing client-side crypto calls)**
@@ -10,10 +13,10 @@
   - Verified end-to-end via Chrome DevTools against live Supabase (4-segment ciphertext blobs; document metadata stays encrypted)
 
 **Missing routes**
-- [ ] `/register` endpoint — the open POST route the USB app calls to pair a patient (`{usb_id, public_key, patient_name, provider_code}`); validates pairing code, inserts into `patient_provider_links`
+- [x] `/register` endpoint — open POST route + Supabase `register_patient` RPC for USB pairing
 
 **Auth**
-- [ ] Provider sign-up/registration flow (login page exists; no way to create a provider account unless manually seeded)
+- [x] Provider sign-up/registration flow — `+page.svelte` has a Sign in / Create account toggle; `+page.server.ts` implements the `signup` action (`supabase.auth.signUp` with `name` metadata + password length validation) alongside `signin`
 
 **Infrastructure**
 - [x] SQL migration file(s) for all tables (`providers`, `pairing_codes`, `patient_provider_links`, `payloads`, `provider_sent_log`) + RLS policies — applied to live Supabase (`initial_schema`)
@@ -26,14 +29,29 @@
 ## USB App — Rust Backend
 
 **Cryptography** (`src-tauri/src/crypto/mod.rs`)
-- [ ] `generate_keypair()` — currently `todo!()`, needs `x25519_dalek::StaticSecret::random()` + `ml_kem::MlKem768::generate()`
-- [ ] `decrypt()` — currently `todo!()`, needs full X25519 ECDH + ML-KEM-768 decapsulate + HKDF-SHA256 + AES-256-GCM decrypt
+- [x] `generate_keypair()` — X25519 + ML-KEM-768 key generation
+- [x] `decrypt()` — X25519 ECDH + ML-KEM-768 decapsulate + HKDF-SHA256 + AES-256-GCM decrypt
+
+**Sync** (`src-tauri/src/sync/mod.rs` — Supabase networking, split out of `vault/mod.rs`)
+- [x] `register_with_supabase()` — POST to `register_patient` RPC
+- [x] `fetch_remote_payloads()` / `download_encrypted_blob()` — REST + Storage fetch
+- [x] `process_payload()` — parse blob, decrypt, unpack document metadata, write document bytes to `.vault/documents/` (has a unit test for the document layout)
+- [x] Supabase config resolution from env or `provider-frontend/.env`
 
 **Vault** (`src-tauri/src/vault/mod.rs`)
-- [ ] `sync_payloads()` — stub returning `Ok(0)`, needs to: fetch from Supabase `/payloads/[usb_id]`, call `decrypt()` on each blob, persist to `payloads.json`
-- [ ] Document download in `sync_payloads()` — when `payload.type = 'document'`, download encrypted file from Supabase Storage, decrypt, save to local vault
-- [ ] `save_questionnaire_response()` Tauri command — mentioned in PROJECT.md but not yet implemented in `vault/mod.rs`
-- [ ] `get_transcripts(date_range?)` Tauri command — vault storage + retrieval for meeting transcripts
+- [x] `sync_payloads()` Tauri command — orchestrates `sync::*`, dedupes by id, persists to `payloads.json`, returns new-payload count
+- [x] `read_payloads()` — read cached decrypted payloads, filter by type / `provider_id`
+- [x] `vault_exists()`, `generate_keypair()`, `get_usb_id()`, `get_public_key()` — first-run + identity commands
+- [x] `register_patient()` Tauri command + multi-provider link storage (`providers.json`, with legacy `registration.json` migration)
+- [x] `list_provider_links()` / `get_registration_state()` — provider link retrieval
+- [x] `write_vault_entry()` / `read_vault_entries()` — vault entry persistence with `is_private` + category filtering (backend ready; no UI consumes these yet)
+- [ ] `save_questionnaire_response()` Tauri command — mentioned in PROJECT.md, still not implemented
+- [ ] `get_transcripts(date_range?)` Tauri command — vault storage + retrieval for meeting transcripts (not implemented)
+
+> Note: the LLM/STT/TTS commands below exist as stubs (they log via `tracing`
+> and return `Ok` without doing work) and are already invoked from the patient
+> and provider session pages — so the frontend wiring is in place, but the
+> subprocess/inference logic is unimplemented.
 
 **LLM** (`src-tauri/src/llm/mod.rs`)
 - [ ] `llm_start_session()` — spawn llama-server/llama-cli subprocess with Qwen2.5 7B Q4 GGUF; stream tokens via `"llm://token"` Tauri events
@@ -54,6 +72,13 @@
 
 ## USB App — Frontend
 
+**Session UI shell (built)**
+- [x] Home screen (`routes/+page.svelte`) — first-run identity generation, pairing form, paired-provider list, patient/provider entry buttons
+- [x] Patient & provider session pages (`routes/patient`, `routes/provider`) — chat view, mic/Speak button, `llm://token` + `stt://partial` event listeners, role-specific system prompts
+- [x] Tabbed session panels — `SessionTabBar`, `MessagesPanel`, `QuestionnairesPanel`, `DocumentsPanel` (documents open via `@tauri-apps/plugin-shell`)
+- [x] Browser-dev fallback — `isTauriAvailable()` + mock data (`lib/mock/data.ts`) so the UI previews in a plain browser; `BrowserDevBanner` indicates the mode
+- [x] Tauri command/event wrappers (`lib/tauri/commands.ts`, `events.ts`, `env.ts`) and payload parsing helpers (`lib/payloads.ts`)
+
 **TTS audio playback**
 - [ ] Handle `"tts://audio"` Tauri events in patient and provider pages — wire up a Web Audio API player to receive and play WAV chunks as LLM speaks
 
@@ -64,22 +89,24 @@
 - [ ] Recording consent confirmation step before capture begins
 
 **Patient registration flow (first-run)**
-- [ ] After keypair generation: show `usb_id`, let patient enter a 6-digit pairing code, POST to `/register` on the provider server
-- [ ] Handle registration success/failure feedback
+- [x] After keypair generation: show `usb_id`, enter 6-digit pairing code, register via Supabase RPC
+- [x] Handle registration success/failure feedback
 
 **Provider login on USB**
 - [ ] The "Provider login" button on the home screen goes directly to the provider session — needs actual authentication (PIN, passcode, or provider code entry) before granting access
 
 **Vault management UI**
-- [ ] Screen for viewing/adding/editing vault entries (categories, content, `is_private` tagging)
+- [ ] Screen for viewing/adding/editing vault entries (categories, content, `is_private` tagging) — Rust commands (`write_vault_entry`/`read_vault_entries`) exist but no UI calls them yet
 
 **Guardrail configuration UI**
 - [ ] Natural-language guardrail text field for the patient to set
 - [ ] Per-entry `is_private` toggle in vault entry UI (already exists in the data model)
 - [ ] Persistence of guardrail text to vault/config file
+- Note: provider session page shows a static "🔒 Guardrails active" badge, but no guardrail data is set, persisted, or enforced yet
 
 **Multi-provider UI**
-- [ ] Display which provider each payload came from (payload filter by `provider_id` exists in Rust but no UI surfaces it)
+- [x] Display which provider each payload came from — `providerLabel(payload.provider_id, providerLinks)` is rendered in the Messages/Questionnaires/Documents panels; pages load links via `listProviderLinks()`
+- [x] Home screen lists all paired providers and supports pairing with additional providers
 
 ---
 
