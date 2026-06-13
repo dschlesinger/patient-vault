@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=YOUR_PROJECT_REF&read_only=true"
+    },
+    "svelte": {
+      "type": "http",
+      "url": "https://mcp.svelte.dev/mcp"
+    },
+    "tauri-docs": {
+      "type": "http",
+      "url": "https://tauri-docs.mastra.cloud/api/mcp/tauri-docs/mcp"
+    }
+  }
+}
