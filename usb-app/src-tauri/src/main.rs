@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    usb_app_lib::run()
+    patient_vault_usb_lib::run()
 }

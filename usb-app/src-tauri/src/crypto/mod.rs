@@ -59,6 +59,6 @@ pub fn derive_usb_id(public_key: &HybridPublicKey) -> [u8; 32] {
 }
 
 /// Decrypt a blob produced by the provider's browser-side hybrid encryption.
-pub fn decrypt(blob: &EncryptedBlob, keypair: &HybridKeypair) -> anyhow::Result<Vec<u8>> {
+pub fn decrypt(_blob: &EncryptedBlob, _keypair: &HybridKeypair) -> anyhow::Result<Vec<u8>> {
     todo!("implement: x25519 ECDH + ml-kem decapsulate + HKDF-SHA256 + AES-256-GCM decrypt")
 }

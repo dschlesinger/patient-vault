@@ -22,6 +22,7 @@ pub enum TtsLanguage {
 }
 
 impl TtsLanguage {
+    #[allow(dead_code)]
     fn voice_model(&self) -> &'static str {
         match self {
             TtsLanguage::En => "en_US-lessac-medium.onnx",
