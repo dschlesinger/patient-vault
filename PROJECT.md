@@ -166,7 +166,7 @@ Tails OS imposes specific constraints that shape the entire technical approach f
   - Mandarin Chinese: `zh_CN-huayan-medium`
   - Language is selectable per interaction (not globally fixed)
 - **Encryption**: Hybrid X25519 + ML-KEM-768 (see Cryptography section); patient keypair generated on first run and stored in Persistent Storage; private key never transmitted
-  - Rust side: `oqs` crate (Open Quantum Safe) for ML-KEM-768, `x25519-dalek` for X25519, `aes-gcm` for symmetric encryption
+  - Rust side: `ml-kem` crate (RustCrypto, pure Rust, FIPS 203) for ML-KEM-768, `x25519-dalek` for X25519, `aes-gcm` for symmetric encryption
   - Browser side: `ml-kem` npm package for ML-KEM-768, WebCrypto API for X25519 and AES-256-GCM
 
 ### App Structure: Two Login Paths

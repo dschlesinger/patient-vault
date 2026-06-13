@@ -45,9 +45,15 @@ cp provider-frontend/.env.example provider-frontend/.env
 
 1. Create a project at https://supabase.com
 2. Enable **Email** auth provider (Authentication → Providers)
-3. Create a Storage bucket named `documents` and set it to **public**
-4. Run the SQL migrations (will live in `provider-frontend/supabase/migrations/` — not yet created)
-5. Copy **Project URL** and **anon/public key** to `provider-frontend/.env`:
+3. Run migrations — the `documents` bucket and public-read policy are created automatically:
+   ```bash
+   # Option A: Supabase CLI (linked to your project)
+   cd provider-frontend && supabase db push
+
+   # Option B: paste each file in provider-frontend/supabase/migrations/ into
+   #           Supabase Dashboard → SQL Editor (in filename order)
+   ```
+4. Copy **Project URL** and **legacy JWT anon key** (`eyJ…` from Settings → API) to `provider-frontend/.env`:
    ```
    PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
    PUBLIC_SUPABASE_ANON_KEY=<key>

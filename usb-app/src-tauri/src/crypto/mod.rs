@@ -53,7 +53,7 @@ pub fn generate_keypair() -> HybridKeypair {
 pub fn derive_usb_id(public_key: &HybridPublicKey) -> [u8; 32] {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
-    hasher.update(&public_key.x25519);
+    hasher.update(public_key.x25519);
     hasher.update(&public_key.mlkem);
     hasher.finalize().into()
 }
