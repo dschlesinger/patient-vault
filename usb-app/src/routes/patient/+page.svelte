@@ -17,6 +17,7 @@
   } from '$lib/tauri/commands';
   import { onMount, onDestroy } from 'svelte';
   import type { UnlistenFn } from '@tauri-apps/api/event';
+  import { MOCK_PATIENT_MESSAGES } from '$lib/mock/data';
 
   let unlistenLlm: UnlistenFn | null = null;
   let unlistenStt: UnlistenFn | null = null;
@@ -48,7 +49,9 @@
 
       chat.addMessage('assistant', 'Hello! I\'m here to help you manage your health information. What would you like to do today?');
     } catch {
-      // Tauri not available in browser dev
+      // Tauri not available — load mock conversation for browser dev
+      newPayloadCount = 2;
+      for (const m of MOCK_PATIENT_MESSAGES) chat.messages.push(m);
     }
   });
 

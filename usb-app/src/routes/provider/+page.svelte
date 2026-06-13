@@ -14,6 +14,7 @@
   } from '$lib/tauri/commands';
   import { onMount, onDestroy } from 'svelte';
   import type { UnlistenFn } from '@tauri-apps/api/event';
+  import { MOCK_PROVIDER_MESSAGES } from '$lib/mock/data';
 
   // Provider system prompt: guardrails are injected by the Rust backend.
   // The patient's guardrail text + excluded vault entries are applied server-side
@@ -45,7 +46,8 @@
 
       chat.addMessage('assistant', 'Good day. I\'m here to help with this patient\'s visit. Patient data is filtered according to their privacy settings. How can I assist?');
     } catch {
-      // Tauri not available in browser dev
+      // Tauri not available — load mock conversation for browser dev
+      for (const m of MOCK_PROVIDER_MESSAGES) chat.messages.push(m);
     }
   });
 
