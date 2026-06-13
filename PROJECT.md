@@ -294,7 +294,7 @@ PatientVault uses a hybrid post-quantum encryption scheme combining classical an
 ### Libraries
 | Component | Library |
 |---|---|
-| Rust (USB app) | `oqs` (Open Quantum Safe) for ML-KEM-768, `x25519-dalek` for X25519, `aes-gcm` for AES-256-GCM, `hkdf` for key derivation |
+| Rust (USB app) | `ml-kem` (RustCrypto, FIPS 203, pure Rust — no C deps) for ML-KEM-768, `x25519-dalek` for X25519, `aes-gcm` for AES-256-GCM, `hkdf` for key derivation |
 | Browser (provider frontend) | `ml-kem` npm package for ML-KEM-768, WebCrypto API for X25519 + AES-256-GCM + HKDF |
 
 ### Future Consideration
@@ -445,6 +445,6 @@ Connects AI tools directly to your Supabase project for schema management, query
 **Why it fits**: Hybrid classical + post-quantum scheme combining X25519 (battle-tested, classical) and ML-KEM-768 (NIST FIPS 203, finalized 2024, post-quantum). Combined shared secret via HKDF-SHA256. Content encrypted with AES-256-GCM. Protects against both classical and quantum adversaries — if either algorithm is broken, the other still holds. Current best practice used by Signal, Apple, and Google.
 
 **MCP**: ❌ N/A — cryptographic libraries, not services.
-**Rust libraries**: `oqs` (ML-KEM-768), `x25519-dalek`, `aes-gcm`, `hkdf`
+**Rust libraries**: `ml-kem` (RustCrypto, pure Rust, FIPS 203 — replaces `oqs` which requires liboqs C dependency incompatible with Tails OS), `x25519-dalek`, `aes-gcm`, `hkdf`
 **Browser libraries**: `ml-kem` npm package, WebCrypto API (X25519, AES-256-GCM, HKDF)
 **ML-KEM-768 spec**: https://csrc.nist.gov/pubs/fips/203/final
