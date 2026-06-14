@@ -23,7 +23,7 @@ Both are pnpm workspace packages managed from the repo root.
 | Engine build tools (for `fetch-assets.sh`) | — | `sudo apt install git cmake build-essential libsdl2-dev` |
 | SDL2 runtime (mic capture for `whisper-stream`) | — | `sudo apt install libsdl2-2.0-0` |
 
-**Note**: `liboqs` is NOT required. PatientVault uses the pure-Rust `ml-kem` crate (RustCrypto, FIPS 203) with no C dependencies — Tails OS compatible.
+**Note**: `liboqs` is NOT required. PatientVault uses the pure-Rust `ml-kem` crate (RustCrypto, FIPS 203) with no C dependencies — keeping the build portable.
 
 Optional:
 - Supabase CLI: `pnpm dlx supabase` (for local DB development)
@@ -140,7 +140,7 @@ pnpm dev:usb
 # Provider frontend (outputs to provider-frontend/build/)
 pnpm build:provider
 
-# USB app — produces .deb package for Tails OS deployment
+# USB app — produces a portable build / .deb package for Ubuntu
 pnpm build:usb
 ```
 
@@ -156,10 +156,10 @@ The USB app runs three local engines as child processes — no network, all on-d
 | STT (speech→text) | `whisper-stream` (live) / `whisper-cli` (batch) | Whisper `base` multilingual |
 | TTS (text→speech) | `piper` (rhasspy v1.2.0 CLI) | Piper voices (en/es/zh) |
 
-**Two asset classes, two locations** (a Tails constraint — see below):
+**Two asset classes:**
 
-- **Binaries** (`llama-server`, `whisper-stream`, `whisper-cli`, `piper` + their `.so` libs) → `usb-app/src-tauri/resources/bin/`. These are bundled into the `.deb` and installed to `/usr/lib/patient-vault/bin/` (an *executable* location).
-- **Models** (GGUF, `ggml-base.bin`, Piper `.onnx`/`.onnx.json`) → `usb-app/src-tauri/resources/models/{llm,whisper,piper}/` for development, or Persistent Storage for Tails. These are read-only *data*, never executed.
+- **Binaries** (`llama-server`, `whisper-stream`, `whisper-cli`, `piper` + their `.so` libs) → `usb-app/src-tauri/resources/bin/`. These are bundled next to the app (on the USB drive in the portable model, or installed to `/usr/lib/patient-vault/bin/` for a `.deb`).
+- **Models** (GGUF, `ggml-base.bin`, Piper `.onnx`/`.onnx.json`) → `usb-app/src-tauri/resources/models/{llm,whisper,piper}/` for development, or the app's `patient-vault-data/models/` directory on the USB drive in production. These are read-only *data*, never executed.
 
 ### One-command fetch
 
@@ -186,39 +186,51 @@ The script downloads Qwen2.5 GGUF (bartowski), Whisper `ggml-base.bin` (ggergano
 | `PATIENT_VAULT_BIN_DIR` | Directory containing the engine binaries |
 | `PATIENT_VAULT_MODEL_DIR` | Directory containing `llm/`, `whisper/`, `piper/` model subdirs |
 
-Models also resolve automatically from `~/Persistent/patient-vault/models/` (Tails).
+Models also resolve automatically from `<app>/patient-vault-data/models/` on the USB drive (the portable production location). Override the vault/data directory itself with `PATIENT_VAULT_DATA_DIR`.
 
 ---
 
-## Tails OS Deployment
+## Ubuntu Deployment (portable USB)
 
-PatientVault is designed for Tails' security model:
+PatientVault targets Ubuntu and runs portably from a USB drive: the app binary, engine binaries, models, and the patient vault all live together on the drive, so the patient's data travels with them and is never left on the host.
 
-- **Binaries run from an executable location.** Tails mounts Persistent Storage and `$HOME` `noexec`, so the engine binaries are bundled into the `.deb` and installed to `/usr/lib/patient-vault/bin/`. The model *data* files live in Persistent Storage (no execution, room for multi-GB files).
-- **LLM uses loopback HTTP.** `llama-server` binds `127.0.0.1` on an ephemeral port (Tor-reserved ports are avoided); loopback is permitted for the `amnesia` user.
-- **Microphone is unmediated** for the `amnesia` user, so `whisper-stream` captures directly via SDL2.
+- **Everything resolves relative to the app.** Engine binaries are bundled next to the binary (`<app>/bin/`); models and the vault live in `<app>/patient-vault-data/` on the same drive (see `assets.rs` and `vault/mod.rs`).
+- **LLM uses loopback HTTP.** `llama-server` binds `127.0.0.1` on an ephemeral port (commonly-reserved ports such as Tor's are avoided).
+- **Microphone capture** uses standard Ubuntu audio (ALSA/PulseAudio/PipeWire) via SDL2 for `whisper-stream`.
+
+### Portable build (recommended)
 
 ```bash
-# 1. Build the .deb (binaries must already be in resources/bin — run fetch-assets.sh first)
+# 1. Fetch binaries + models into resources/ (run once)
+cd usb-app && ./scripts/fetch-assets.sh
+
+# 2. Build the app
 pnpm build:usb
 
-# 2. Install on Tails via "Additional Software" (survives reboots)
-sudo apt install ./usb-app/src-tauri/target/release/bundle/deb/patient-vault-usb_*.deb
-
-# 3. Place models in Persistent Storage (run once, from a machine with network)
-MODELS_DIR="$HOME/Persistent/patient-vault/models" ./usb-app/scripts/fetch-assets.sh models
+# 3. Copy the binary, resources/bin (as bin/), and models onto the USB drive, e.g.:
+#    /media/$USER/PVAULT/patient-vault            (the app binary)
+#    /media/$USER/PVAULT/bin/                      (engine binaries)
+#    /media/$USER/PVAULT/patient-vault-data/models/   (model files)
+MODELS_DIR="/media/$USER/PVAULT/patient-vault-data/models" ./scripts/fetch-assets.sh models
 ```
 
-The app writes the patient keypair and vault to `~/Persistent/patient-vault/` (Tails Persistent Storage).
+The app writes the patient keypair and vault to `<app>/patient-vault-data/` on the USB drive. Full-disk encryption (e.g. LUKS) on the drive is recommended for at-rest protection.
 
-### Tails verification checklist (validate on real hardware)
+### Optional: system-wide `.deb` install
 
-These could not be verified outside Tails and must be checked on-device:
+```bash
+pnpm build:usb
+sudo apt install ./usb-app/src-tauri/target/release/bundle/deb/patient-vault-usb_*.deb
+```
+
+A `.deb` install places engine binaries under `/usr/lib/patient-vault/bin/`. The vault still defaults to a `patient-vault-data` directory next to the launched binary; set `PATIENT_VAULT_DATA_DIR` to choose another location.
+
+### Verification checklist (validate on real hardware)
 
 - [ ] **CPU baseline** — build the llama.cpp/whisper.cpp binaries with `-DGGML_NATIVE=OFF` (the script does this) so they don't use instructions absent on the target CPU. Confirm they run.
-- [ ] **SDL2** — `libsdl2-2.0-0` is declared as a `.deb` dependency; confirm `whisper-stream` finds it (or static-link SDL2 if "Additional Software" can't pull it).
-- [ ] **AppArmor** — confirm no profile blocks `/usr/lib/patient-vault/bin/*` execution or loopback.
-- [ ] **Additional Software persistence** — confirm the locally-installed `.deb` is re-applied across reboots.
+- [ ] **USB exec permission** — confirm the USB filesystem is not mounted `noexec` (ext4 is fine; some FAT/exFAT auto-mounts add `noexec`, which blocks the bundled binaries).
+- [ ] **SDL2** — confirm `libsdl2-2.0-0` is installed so `whisper-stream` finds it.
+- [ ] **Audio** — confirm microphone capture works under the host's audio stack (PulseAudio/PipeWire).
 - [ ] **RAM** — Qwen 7B Q4 needs ~5–6 GB resident; confirm headroom on the target machine.
 
 ---

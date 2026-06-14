@@ -13,7 +13,7 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
 
 // ── Vault & identity ──────────────────────────────────────────────────────────
 
-/** Returns true if a keypair and vault already exist in Persistent Storage. */
+/** Returns true if a keypair and vault already exist on the USB drive. */
 export async function vaultExists(): Promise<boolean> {
   return tauriInvoke<boolean>('vault_exists');
 }

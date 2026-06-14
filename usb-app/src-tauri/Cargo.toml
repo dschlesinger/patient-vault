@@ -21,7 +21,7 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 
-# Cryptography (pure Rust — no C dependencies, Tails OS compatible)
+# Cryptography (pure Rust — no C dependencies, portable across Linux)
 ml-kem = { version = "0.3", features = ["zeroize", "getrandom"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 x25519-dalek = { version = "2", features = ["zeroize", "static_secrets"] }

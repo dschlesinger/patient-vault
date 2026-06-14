@@ -56,8 +56,8 @@
       <Card>
         <h2 class="text-2xl font-bold mb-3">First run</h2>
         <p class="text-[--color-nb-text-secondary] mb-6">
-          PatientVault will generate a unique cryptographic identity for this device and store it in
-          Persistent Storage. This only happens once.
+          PatientVault will generate a unique cryptographic identity for this device and store it on
+          the USB drive. This only happens once.
         </p>
         {#if setupError}
           <div class="mb-4 p-3 bg-[--color-nb-danger] text-[--color-nb-black] font-bold nb-border">

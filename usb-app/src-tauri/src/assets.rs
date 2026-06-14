@@ -1,15 +1,14 @@
-//! Resolves on-device binary and model asset paths for the USB app.
+//! Resolves on-device binary and model asset paths for the USB app
+//! (Ubuntu, portable USB model — see PROJECT.md).
 //!
-//! Tails OS constraint (see PROJECT.md): writable locations such as Persistent
-//! Storage and `$HOME` are mounted `noexec`, so *executable* binaries must be
-//! run from the installed application directory (under `/usr` via the `.deb`),
-//! never from Persistent Storage. Large model/data files are read-only data —
-//! `noexec` is irrelevant — so they live in Persistent Storage where there is
-//! room for multi-gigabyte files.
+//! In the portable model the app binary, its engine binaries, and the (multi-GB)
+//! model/data files all live together on the USB drive, resolved relative to the
+//! running executable. A normal `.deb` install is also supported, in which case
+//! binaries come from the installed application directory.
 //!
-//! Two resolvers encode that split:
-//!   - [`binary_path`] looks only in installed/bundled executable locations.
-//!   - [`model_path`] prefers Persistent Storage, then bundled resources.
+//! Two resolvers:
+//!   - [`binary_path`] looks in bundled/installed executable locations.
+//!   - [`model_path`] prefers the portable data directory, then bundled resources.
 
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
@@ -54,7 +53,7 @@ fn binary_dirs(
     if let Some(d) = manifest_dir {
         dirs.push(d.join("resources").join("bin"));
     }
-    // Standard install location for the Tails `.deb`.
+    // Standard install location for a system-wide `.deb` install.
     dirs.push(PathBuf::from("/usr/lib/patient-vault/bin"));
     dirs
 }
@@ -62,7 +61,7 @@ fn binary_dirs(
 /// Candidate directories for model/data assets, most-specific first.
 fn model_dirs(
     env_override: Option<PathBuf>,
-    persistent_models: Option<PathBuf>,
+    portable_models: Option<PathBuf>,
     resource_dir: Option<PathBuf>,
     exe_dir: Option<PathBuf>,
     manifest_dir: Option<PathBuf>,
@@ -71,7 +70,7 @@ fn model_dirs(
     if let Some(d) = env_override {
         dirs.push(d);
     }
-    if let Some(d) = persistent_models {
+    if let Some(d) = portable_models {
         dirs.push(d);
     }
     if let Some(d) = resource_dir {
@@ -104,22 +103,17 @@ fn manifest_dir() -> Option<PathBuf> {
     std::env::var("CARGO_MANIFEST_DIR").ok().map(PathBuf::from)
 }
 
-/// Persistent Storage models directory (`~/Persistent/patient-vault/models`),
-/// matching the vault's storage location convention.
-fn persistent_models_dir() -> Option<PathBuf> {
-    let home = std::env::var("HOME").ok()?;
-    let dir = PathBuf::from(home)
-        .join("Persistent")
-        .join("patient-vault")
-        .join("models");
-    Some(dir)
+/// Portable models directory on the USB drive, next to the app binary
+/// (`<exe_dir>/patient-vault-data/models`) — matches the vault's data location.
+fn portable_models_dir() -> Option<PathBuf> {
+    exe_dir().map(|d| d.join("patient-vault-data").join("models"))
 }
 
 /// Resolve an executable binary by name (e.g. `"llama-server"`).
 ///
-/// Searches installed/bundled locations only — never Persistent Storage, which
-/// is `noexec` on Tails. Falls back to the bare name (PATH lookup) so a binary
-/// available on `$PATH` during development still works.
+/// Searches the bundled/installed executable locations, then falls back to the
+/// bare name (PATH lookup) so a binary available on `$PATH` during development
+/// still works.
 pub fn binary_path(app: &AppHandle, name: &str) -> PathBuf {
     let dirs = binary_dirs(
         env_dir(BIN_DIR_ENV),
@@ -132,21 +126,21 @@ pub fn binary_path(app: &AppHandle, name: &str) -> PathBuf {
 
 /// Resolve a model/data asset by relative path (e.g. `"whisper/ggml-base.bin"`).
 ///
-/// Prefers Persistent Storage, then bundled resources. Returns an error if the
-/// asset cannot be found so callers can surface an actionable "model not
-/// installed" message to the UI.
+/// Prefers the portable data directory on the USB drive, then bundled resources.
+/// Returns an error if the asset cannot be found so callers can surface an
+/// actionable "model not installed" message to the UI.
 pub fn model_path(app: &AppHandle, rel: &str) -> Result<PathBuf, String> {
     let dirs = model_dirs(
         env_dir(MODEL_DIR_ENV),
-        persistent_models_dir(),
+        portable_models_dir(),
         app.path().resource_dir().ok(),
         exe_dir(),
         manifest_dir(),
     );
     first_existing(&dirs, rel).ok_or_else(|| {
         format!(
-            "Model asset `{rel}` not found. Install it under Persistent Storage \
-             (~/Persistent/patient-vault/models/) or set {MODEL_DIR_ENV}."
+            "Model asset `{rel}` not found. Place it in the app's \
+             `patient-vault-data/models/` directory on the USB drive or set {MODEL_DIR_ENV}."
         )
     })
 }
@@ -176,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn binary_dirs_never_includes_persistent_storage() {
+    fn binary_dirs_orders_override_first_and_includes_install_fallback() {
         let dirs = binary_dirs(
             Some(PathBuf::from("/override")),
             Some(PathBuf::from("/res")),
@@ -185,29 +179,29 @@ mod tests {
         );
         // The env override is honoured first.
         assert_eq!(dirs.first(), Some(&PathBuf::from("/override")));
-        // The installed deb location is always a fallback.
+        // The system-wide install location is always a fallback.
         assert!(dirs.contains(&PathBuf::from("/usr/lib/patient-vault/bin")));
-        // No Persistent Storage path is ever an execution candidate.
-        assert!(dirs.iter().all(|d| !d.to_string_lossy().contains("Persistent")));
+        // The portable location next to the binary is a candidate.
+        assert!(dirs.contains(&PathBuf::from("/opt/app/bin")));
     }
 
     #[test]
-    fn model_dirs_prefers_persistent_over_resources() {
+    fn model_dirs_prefers_portable_data_over_resources() {
         let dirs = model_dirs(
             None,
-            Some(PathBuf::from("/home/user/Persistent/patient-vault/models")),
+            Some(PathBuf::from("/media/user/PVAULT/patient-vault-data/models")),
             Some(PathBuf::from("/res")),
             None,
             None,
         );
-        let persistent_idx = dirs
+        let portable_idx = dirs
             .iter()
-            .position(|d| d.to_string_lossy().contains("Persistent"))
+            .position(|d| d.to_string_lossy().contains("patient-vault-data"))
             .unwrap();
         let resource_idx = dirs
             .iter()
             .position(|d| d == &PathBuf::from("/res").join("models"))
             .unwrap();
-        assert!(persistent_idx < resource_idx);
+        assert!(portable_idx < resource_idx);
     }
 }

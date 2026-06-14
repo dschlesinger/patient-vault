@@ -1,7 +1,7 @@
 //! Piper TTS subprocess management.
 //!
-//! Uses the archived `rhasspy/piper` v1.2.0 C++ CLI (selected for a dependency-
-//! free, Tails-friendly binary). Piper reads a line of text from stdin and
+//! Uses the archived `rhasspy/piper` v1.2.0 C++ CLI (selected for a single,
+//! dependency-free, portable binary). Piper reads a line of text from stdin and
 //! writes a WAV file; we read it back and emit it as one base64 `tts://audio`
 //! event for the webview's Web Audio player. Piper is realtime-fast on CPU, so
 //! synthesizing a sentence-length reply as a single clip keeps the code simple
@@ -12,8 +12,8 @@
 //!   Es → es_MX-ald-medium.onnx
 //!   Zh → zh_CN-huayan-medium.onnx
 //!
-//! Tails note: Piper is an *executable* (installed location) while the `.onnx`
-//! voices are *data* (Persistent Storage). The temp WAV lives in `/tmp` (tmpfs).
+//! Portability: the Piper binary and its `.onnx` voices are resolved relative to
+//! the app on the USB drive (see [`crate::assets`]). The temp WAV lives in `/tmp`.
 
 use crate::assets;
 use base64::Engine;

@@ -11,10 +11,9 @@
 //! vault and the results are fed back, looping until the model produces a plain
 //! answer. Guardrail filtering for provider sessions happens in [`tools`].
 //!
-//! Tails note: `llama-server` is an *executable* (resolved from an installed
-//! location, never Persistent Storage) but the GGUF it loads is *data* (resolved
-//! from Persistent Storage). Loopback HTTP on an ephemeral port is permitted for
-//! the `amnesia` user.
+//! Portability: `llama-server` and the GGUF model it loads are both resolved
+//! relative to the app on the USB drive (see [`crate::assets`]). The server binds
+//! loopback HTTP on an ephemeral port and is killed on drop.
 
 mod tools;
 
@@ -102,7 +101,7 @@ pub async fn llm_start_session(
         .arg(CONTEXT_TOKENS.to_string())
         .arg("--jinja") // enable tool-call template support
         .arg("-ngl")
-        .arg("0") // CPU only (no GPU on Tails)
+        .arg("0") // CPU-only inference (no GPU offload)
         .arg("--no-webui")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -398,10 +397,10 @@ fn parse_chunk(json_str: &str) -> Option<ChunkDelta> {
 
 // ── Process lifecycle helpers ────────────────────────────────────────────────────
 
-/// Ports the Tor daemon reserves on Tails; avoid binding these.
+/// Ports commonly reserved by Tor / other local daemons; avoid binding these.
 const BLOCKED_PORTS: &[u16] = &[9050, 9051, 9052, 9040, 9062, 9150, 953, 5353];
 
-/// Pick a free loopback TCP port, avoiding Tor-reserved ports.
+/// Pick a free loopback TCP port, avoiding commonly-reserved ports.
 fn pick_loopback_port() -> Result<u16, String> {
     for _ in 0..16 {
         let listener = std::net::TcpListener::bind("127.0.0.1:0")

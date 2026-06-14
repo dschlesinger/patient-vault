@@ -51,8 +51,8 @@
 > Implemented: the LLM/STT/TTS commands below spawn real engine subprocesses
 > via `tokio::process` and stream results over Tauri events. Process lifecycles
 > are held in managed state (`LlmState`/`SttState`/`TtsState`). Binary/model
-> paths resolve through `src-tauri/src/assets.rs` (binaries from executable
-> locations, models from Persistent Storage — a Tails constraint).
+> paths resolve through `src-tauri/src/assets.rs` (binaries and models both
+> resolve relative to the app on the USB drive — portable Ubuntu model).
 
 **LLM** (`src-tauri/src/llm/mod.rs`)
 - [x] `llm_start_session()` — spawn `llama-server` (`--jinja`, CPU, loopback ephemeral port), poll `/health`, seed system prompt; `role` selects temperature (patient 0.7 / provider 0.3)
@@ -115,4 +115,4 @@
 - [x] `usb-app/scripts/fetch-assets.sh` — idempotent fetch/build of all engines + models (pinned URLs). Builds `llama.cpp` and `whisper.cpp` via CMake (whisper with `-DWHISPER_SDL2=ON` for the mic), fetches the archived Piper v1.2.0 CLI tarball, downloads the Qwen2.5 7B Q4 GGUF, Whisper `base`, and the three Piper voices.
 - [x] `tauri.conf.json` — bundles `resources/bin/*` into the `.deb` at `/usr/lib/patient-vault/bin/` and declares the `libsdl2-2.0-0` runtime dependency; `assets.rs` resolves these at runtime.
 - [ ] Run `fetch-assets.sh` on the build host and commit/stage binaries into `resources/bin/` before packaging (binaries are git-ignored; produced per build host).
-- [ ] On Tails: place model files in `~/Persistent/patient-vault/models/` (or set `PATIENT_VAULT_MODEL_DIR`) — see SETUP.md "AI Engines" + "Tails verification checklist".
+- [ ] On the USB drive: place model files in `<app>/patient-vault-data/models/` (or set `PATIENT_VAULT_MODEL_DIR`) — see SETUP.md "AI Engines" + "Ubuntu Deployment (portable USB)".

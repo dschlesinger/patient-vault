@@ -9,11 +9,11 @@
 #   $MODELS_DIR/whisper/      ggml-base.bin
 #   $MODELS_DIR/piper/        en/es/zh voices (.onnx + .onnx.json)
 #
-# Binaries always go to resources/bin so they can be bundled into the .deb and
-# installed to /usr/lib/patient-vault/bin (an executable location on Tails).
-# Models default to resources/models for development. For a Tails deployment,
-# run with MODELS_DIR pointing at Persistent Storage, e.g.:
-#   MODELS_DIR="$HOME/Persistent/patient-vault/models" ./scripts/fetch-assets.sh models
+# Binaries always go to resources/bin so they are bundled next to the app (on the
+# USB drive in the portable model, or under /usr/lib/patient-vault/bin for a .deb).
+# Models default to resources/models for development. For a portable USB build,
+# run with MODELS_DIR pointing at the app's data dir on the drive, e.g.:
+#   MODELS_DIR="/media/$USER/PVAULT/patient-vault-data/models" ./scripts/fetch-assets.sh models
 #
 # Usage:
 #   ./scripts/fetch-assets.sh                 # everything
@@ -22,8 +22,8 @@
 #   ./scripts/fetch-assets.sh llama|whisper|piper   # one engine binary
 #
 # NOTE: The download URLs and the Piper release tag below are pinned but should
-# be re-verified over time (see SETUP.md). On Tails, build the llama.cpp /
-# whisper.cpp binaries against a compatible CPU baseline (see SETUP.md).
+# be re-verified over time (see SETUP.md). Build the llama.cpp / whisper.cpp
+# binaries against a compatible CPU baseline for the target machines (see SETUP.md).
 
 set -euo pipefail
 

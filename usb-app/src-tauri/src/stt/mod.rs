@@ -9,8 +9,9 @@
 //!     WAV file. Used for meeting-recording transcription.
 //!
 //! Model: Whisper `base` multilingual (`whisper/ggml-base.bin`), resolved from
-//! Persistent Storage. On Tails the microphone is unmediated for the `amnesia`
-//! user, so direct capture works without extra permissions.
+//! the app's models directory on the USB drive (see [`crate::assets`]). Direct
+//! microphone capture via SDL2 requires standard Ubuntu audio access (ALSA/
+//! PulseAudio/PipeWire).
 
 use crate::assets;
 use std::process::Stdio;

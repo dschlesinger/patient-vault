@@ -2,12 +2,12 @@
 
 ## Overview
 
-PatientVault is a secure, patient-controlled system for sharing sensitive personal health information with providers. Patient data never leaves the device hosting the Tails OS instance (a USB drive). Providers can send pre-visit questionnaires and secure messages to patients, and both parties can record provider meetings for the patient's reference.
+PatientVault is a secure, patient-controlled system for sharing sensitive personal health information with providers. The patient's data lives on a portable USB drive and is only ever decrypted locally on that device — it is never stored in plaintext on any server. Providers can send pre-visit questionnaires and secure messages to patients, and both parties can record provider meetings for the patient's reference.
 
 The system consists of two independently deployed components:
 
-1. **Provider Web Frontend** — a standard web application (no Tails constraints)
-2. **Patient/Provider USB App** — a Tails OS-compatible local application with on-device AI
+1. **Provider Web Frontend** — a standard web application
+2. **Patient/Provider USB App** — a portable Ubuntu desktop application with on-device AI, run from the USB drive
 
 ---
 
@@ -20,7 +20,7 @@ The system consists of two independently deployed components:
 - **Design system**: Neobrutalism, following design conventions from [olegpolin/neobrutalism-svelte](https://github.com/olegpolin/neobrutalism-svelte)
 
 ### Deployment
-- Standard web deployment (no Tails constraints apply to this component)
+- Standard web deployment
 - Accessed by providers via a regular browser on any device
 
 ### Functionality
@@ -34,7 +34,7 @@ The system consists of two independently deployed components:
 Registration ties a patient's USB-generated identity to a specific provider via a one-time 6-digit code, ensuring the pairing happens in person.
 
 1. **Provider generates a one-time code**: The provider clicks "Pair new patient" in the web frontend. The backend generates a random 6-digit code, stores it associated with the provider's ID with a short expiry (e.g., 10 minutes), and displays it to the provider.
-2. **Patient keypair**: On first run, the USB app generates a hybrid X25519 + ML-KEM-768 keypair and stores both keys in Persistent Storage. The patient's `usb_id` is derived as a hash of the combined public key — self-authenticating and not dependent on USB hardware serials (which are spoofable). ML-KEM-768 public keys are ~800 bytes (vs 32 bytes for X25519 alone) — this is fully manageable for storage and transmission.
+2. **Patient keypair**: On first run, the USB app generates a hybrid X25519 + ML-KEM-768 keypair and stores both keys on the USB drive. The patient's `usb_id` is derived as a hash of the combined public key — self-authenticating and not dependent on USB hardware serials (which are spoofable). ML-KEM-768 public keys are ~800 bytes (vs 32 bytes for X25519 alone) — this is fully manageable for storage and transmission.
 3. **Patient enters the code**: During the in-person visit, the patient enters the 6-digit code displayed by the provider into the USB app.
 4. **Registration request**: The USB app POSTs to `/register` with `{usb_id, public_key, patient_name, provider_code}`. No authentication header is required — the 6-digit code is the trust proof, and the endpoint is open by design (see Security Model).
 5. **Backend validation**: The backend checks that `provider_code` exists, has not expired, and has not already been used. If valid, it creates a row in the `patient_provider_links` table associating `usb_id` + `public_key` + `patient_name` with that provider, and marks the code as used.
@@ -138,21 +138,23 @@ with check (auth.role() = 'authenticated');
 
 ---
 
-## Component 2: USB App (Tails OS)
+## Component 2: USB App (Ubuntu, portable USB)
 
-### Platform Constraints (Tails OS)
-Tails OS imposes specific constraints that shape the entire technical approach for this component:
+### Platform & Portability Model
+The USB app targets **Ubuntu** (Linux) and follows a **portable, USB-resident model**: the compiled application and all patient data live together on a USB drive. When the drive is plugged into an Ubuntu machine, the app runs directly from it and reads/writes the patient vault on the same drive — so the patient's data physically travels with them and is never left on the host machine.
 
-- **No AppImage support** — Tails' security model (restricted/non-persistent filesystem, `noexec` on most writable locations, AppArmor confinement) blocks execution of arbitrary unsandboxed binaries like AppImages
-- **No Electron** — Electron apps are bundled Chromium binaries with similar packaging/execution issues to AppImages, incompatible with Tails' security model
-- **Persistent Storage limitations** — Tails Persistent Storage only persists predefined data categories and does not provide a generally writable/executable system root
-- **Recommended approach**: Compile from source and run directly, or use a `.deb` package installed via Tails' "Additional Software" persistence feature (installs via apt, survives reboots)
+Key implications of this model:
+
+- **Self-contained binary** — the app is a single compiled binary plus bundled model assets, runnable from the USB mount point without a system-wide install
+- **Data co-located with the app** — the keypair and vault are stored next to the binary on the USB drive (resolved relative to the executable), not in the host's home directory, so unplugging the drive removes all patient data from the host
+- **Optional install path** — for users who prefer it, the app can also be installed normally via a `.deb` package, but the default and recommended usage is portable-from-USB
+- **No special OS hardening assumed** — unlike an amnesiac OS, Ubuntu is a general-purpose persistent system. Confidentiality therefore rests on end-to-end encryption and physical control of the USB drive rather than on host-OS guarantees (see Security & Access Control Model)
 
 ### Tech Stack
 
 - **Application framework**: Tauri (Rust backend + webview-based frontend)
-  - Produces a single compiled binary — avoids AppImage/Electron packaging issues entirely
-  - Runs directly from Persistent Storage
+  - Produces a single compiled binary with a small footprint — ideal for running portably from a USB drive
+  - Runs directly from the USB mount point on Ubuntu (no system-wide install required)
   - UI written in Svelte for stack consistency with the provider frontend, compiled via Tauri
 - **On-device LLM**: llama.cpp (via Rust bindings or subprocess) running **Qwen2.5 7B at Q4 quantization** (~4.5GB RAM) for CPU-based inference
   - Qwen2.5 7B is chosen for its strong tool-calling capability (required for vault fetching), strong multilingual performance across English, Spanish, and Mandarin, and acceptable CPU inference speed (~3-6 tokens/second on mid-range hardware)
@@ -165,7 +167,7 @@ Tails OS imposes specific constraints that shape the entire technical approach f
   - Spanish: `es_MX-ald-medium` (Mexican Spanish — variant TBD)
   - Mandarin Chinese: `zh_CN-huayan-medium`
   - Language is selectable per interaction (not globally fixed)
-- **Encryption**: Hybrid X25519 + ML-KEM-768 (see Cryptography section); patient keypair generated on first run and stored in Persistent Storage; private key never transmitted
+- **Encryption**: Hybrid X25519 + ML-KEM-768 (see Cryptography section); patient keypair generated on first run and stored on the USB drive alongside the app; private key never transmitted
   - Rust side: `ml-kem` crate (RustCrypto, pure Rust, FIPS 203) for ML-KEM-768, `x25519-dalek` for X25519, `aes-gcm` for symmetric encryption
   - Browser side: `ml-kem` npm package for ML-KEM-768, WebCrypto API for X25519 and AES-256-GCM
 
@@ -247,7 +249,7 @@ Both layers are active simultaneously. The data-layer exclusion provides the har
 
 ### Identity & Pairing
 
-- Patient identity is a cryptographic keypair stored in Tails Persistent Storage; `usb_id` = hash(public key)
+- Patient identity is a cryptographic keypair stored on the USB drive; `usb_id` = hash(public key)
 - The USB is the physical security boundary — possession of the USB is possession of the identity
 - Multi-provider: one `usb_id` may be linked to many providers via separate rows in `patient_provider_links`
 - Re-registration (e.g., after USB loss or keypair regeneration) requires a new in-person pairing with each provider; old registrations are not automatically revoked (future work)
@@ -287,7 +289,7 @@ PatientVault uses a hybrid post-quantum encryption scheme combining classical an
 3. `ss = HKDF(ss_classical || ss_pq)` → AES-256-GCM decrypts the payload
 
 ### Key Storage
-- Patient private key stored in Tails Persistent Storage, encrypted at rest
+- Patient private key stored on the USB drive; for v1 the on-disk files are plaintext JSON, so at-rest protection relies on physical control of the drive (full-disk encryption such as LUKS on the USB is recommended)
 - Private key never leaves the USB under any circumstances
 - `usb_id` = SHA-256(X25519_pubkey || ML-KEM-768_pubkey)
 
@@ -314,7 +316,7 @@ ML-DSA (FIPS 204, formerly Dilithium) digital signatures could be added in a fut
 ## V1 Build Scope
 
 - Provider web frontend: full scope (auth, dashboard, patient management, questionnaire/message sending, encrypted blob storage)
-- USB app: Tauri + Svelte, running from Persistent Storage
+- USB app: Tauri + Svelte, running portably from the USB drive on Ubuntu
 - LLM: Qwen2.5 7B Q4 via llama.cpp — general conversational agent with tool calling for local vault access, scoped by role and guardrails
 - STT: whisper.cpp `base` multilingual — streaming mode for conversational interactions, batch mode for meeting recording
 - TTS: Piper with English, Spanish (MX), and Mandarin voice models; language selectable per interaction
@@ -382,12 +384,12 @@ Connects AI tools directly to your Supabase project for schema management, query
 
 ---
 
-## USB App (Tails OS)
+## USB App (Ubuntu, portable USB)
 
 ### Tauri
-**Role in project**: Application framework for the patient/provider USB app running on Tails OS. Produces a single compiled binary (Rust backend + webview frontend) that runs directly from Tails Persistent Storage without AppImage, Electron, or package manager dependencies — the only viable approach given Tails' security constraints.
+**Role in project**: Application framework for the patient/provider USB app, targeting Ubuntu and run portably from the USB drive. Produces a single compiled binary (Rust backend + webview frontend) that runs directly from the drive without a system-wide install (a `.deb` install is also supported).
 
-**Why it fits**: Tauri's output is a standalone native binary, not a bundled Chromium instance. The Rust backend handles all security-sensitive operations (cryptography, local vault access, llama.cpp/whisper.cpp subprocess management) while the Svelte frontend (compiled via Tauri) provides the UI — consistent with the provider frontend's stack. Significantly smaller binary footprint than Electron.
+**Why it fits**: Tauri's output is a standalone native binary, not a bundled Chromium instance — a small footprint that is well suited to running portably from a USB drive. The Rust backend handles all security-sensitive operations (cryptography, local vault access, llama.cpp/whisper.cpp subprocess management) while the Svelte frontend (compiled via Tauri) provides the UI — consistent with the provider frontend's stack. Significantly smaller binary footprint than Electron.
 
 **MCP**: ⚠️ No official MCP. A community MCP exists (`dirvine/tauri-mcp` on crates.io) for testing and debugging Tauri apps during development — useful but not officially maintained.
 **Docs**: https://tauri.app/start/
@@ -427,9 +429,9 @@ Connects AI tools directly to your Supabase project for schema management, query
 ### Piper TTS
 **Role in project**: Neural text-to-speech engine. Reads LLM output and questionnaire questions aloud during conversational turns. CPU-realtime. Three language voice models bundled on the USB: English (`en_US-lessac-medium`), Spanish (`es_MX-ald-medium`), and Mandarin Chinese (`zh_CN-huayan-medium`). Language selectable per interaction.
 
-**Why it fits**: Designed specifically for CPU-realtime inference on low-power hardware (originally targeting Raspberry Pi 4) — well within the performance envelope of a laptop running Tails. VITS-based ONNX models, ~20-60MB per voice, no cloud dependency, offline-first.
+**Why it fits**: Designed specifically for CPU-realtime inference on low-power hardware (originally targeting Raspberry Pi 4) — well within the performance envelope of a typical Ubuntu laptop. VITS-based ONNX models, ~20-60MB per voice, no cloud dependency, offline-first.
 
-**Note**: The original `rhasspy/piper` repository was archived in October 2025; active development moved to `OHF-Voice/piper1-gpl` (a Python package). PatientVault deliberately uses the **archived `rhasspy/piper` v1.2.0 standalone C++ CLI binary** (release tag `2023.11.14-2`) — it is a single dependency-free executable that reads text on stdin and writes a WAV, which is the simplest, most Tails-friendly integration for a spawned subprocess. The USB app reads the resulting WAV and plays it via the Web Audio API (one `tts://audio` event per clip). See `usb-app/scripts/fetch-assets.sh` for the pinned download.
+**Note**: The original `rhasspy/piper` repository was archived in October 2025; active development moved to `OHF-Voice/piper1-gpl` (a Python package). PatientVault deliberately uses the **archived `rhasspy/piper` v1.2.0 standalone C++ CLI binary** (release tag `2023.11.14-2`) — it is a single dependency-free executable that reads text on stdin and writes a WAV, which is the simplest, most portable integration for a spawned subprocess. The USB app reads the resulting WAV and plays it via the Web Audio API (one `tts://audio` event per clip). See `usb-app/scripts/fetch-assets.sh` for the pinned download.
 
 **Implementation**: `usb-app/src-tauri/src/tts/mod.rs` spawns `piper --model <voice> --output_file <tmp.wav>`, then emits the WAV as base64. Barge-in is supported: starting the mic kills any in-flight Piper process and stops playback.
 
@@ -443,11 +445,11 @@ Connects AI tools directly to your Supabase project for schema management, query
 ## Cryptography
 
 ### Hybrid X25519 + ML-KEM-768 with AES-256-GCM
-**Role in project**: End-to-end encryption of all payloads (messages, questionnaires, documents) sent from provider to patient. Patient keypair is generated on first USB run and stored in Tails Persistent Storage. Private key never leaves the USB.
+**Role in project**: End-to-end encryption of all payloads (messages, questionnaires, documents) sent from provider to patient. Patient keypair is generated on first USB run and stored on the USB drive. Private key never leaves the USB.
 
 **Why it fits**: Hybrid classical + post-quantum scheme combining X25519 (battle-tested, classical) and ML-KEM-768 (NIST FIPS 203, finalized 2024, post-quantum). Combined shared secret via HKDF-SHA256. Content encrypted with AES-256-GCM. Protects against both classical and quantum adversaries — if either algorithm is broken, the other still holds. Current best practice used by Signal, Apple, and Google.
 
 **MCP**: ❌ N/A — cryptographic libraries, not services.
-**Rust libraries**: `ml-kem` (RustCrypto, pure Rust, FIPS 203 — replaces `oqs` which requires liboqs C dependency incompatible with Tails OS), `x25519-dalek`, `aes-gcm`, `hkdf`
+**Rust libraries**: `ml-kem` (RustCrypto, pure Rust, FIPS 203 — chosen over `oqs`, which requires the `liboqs` C dependency, to keep the build pure-Rust and portable), `x25519-dalek`, `aes-gcm`, `hkdf`
 **Browser libraries**: `ml-kem` npm package, WebCrypto API (X25519, AES-256-GCM, HKDF)
 **ML-KEM-768 spec**: https://csrc.nist.gov/pubs/fips/203/final

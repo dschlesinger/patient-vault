@@ -1,29 +1,51 @@
-// Local encrypted vault for PatientVault USB app.
+// Local vault for the PatientVault USB app (Ubuntu, portable USB model).
 //
-// The vault is a JSON file stored in Tails Persistent Storage, encrypted at
-// rest with AES-256-GCM using a key derived from the patient's private keypair.
-// The keypair itself is stored in a separate file, also AES-encrypted using a
-// device-local key derived from the USB's unique hardware identifier.
+// The vault is a set of JSON files (keypair, vault entries, payloads, provider
+// links) stored on the USB drive alongside the app binary, so the patient's data
+// physically travels with the drive and is never left on the host machine.
 //
-// For v1, keypair storage uses a simplified approach: the keypair is stored as
-// JSON and protected by Tails Persistent Storage's own filesystem encryption.
-// A dedicated vault encryption key derived from the keypair is used for vault data.
+// For v1, the on-disk files are plaintext JSON; confidentiality at rest relies on
+// physical control of the USB drive (and, recommended, full-disk encryption such
+// as LUKS on the drive itself). The private key never leaves the USB and is never
+// transmitted. Encrypting these files at rest with a passphrase-derived key is
+// future work.
 
 use crate::crypto::{derive_usb_id, HybridKeypair, HybridPublicKey};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Env override for the vault/data directory (development, tests, or a custom
+/// data location). When set, it takes precedence over portable resolution.
+pub const DATA_DIR_ENV: &str = "PATIENT_VAULT_DATA_DIR";
+
+/// Resolve the directory holding the patient's keypair and vault data.
+///
+/// Resolution order (portable USB model):
+///   1. `PATIENT_VAULT_DATA_DIR` env override.
+///   2. An existing `.vault` directory in the current dir (development continuity).
+///   3. `patient-vault-data` next to the app binary — the USB drive in production.
+///   4. `.vault` in the current dir as a last resort.
 fn vault_dir() -> PathBuf {
-    // Tails Persistent Storage is mounted at /home/user/Persistent
-    // For development, fall back to a local .vault directory.
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-    let persistent = PathBuf::from(&home).join("Persistent").join("patient-vault");
-    if persistent.exists() {
-        persistent
-    } else {
-        PathBuf::from(".vault")
+    if let Ok(dir) = std::env::var(DATA_DIR_ENV) {
+        let dir = dir.trim();
+        if !dir.is_empty() {
+            return PathBuf::from(dir);
+        }
     }
+
+    let dev_local = PathBuf::from(".vault");
+    if dev_local.exists() {
+        return dev_local;
+    }
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            return parent.join("patient-vault-data");
+        }
+    }
+
+    dev_local
 }
 
 fn keypair_path() -> PathBuf {
