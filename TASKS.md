@@ -45,28 +45,29 @@
 - [x] `register_patient()` Tauri command + multi-provider link storage (`providers.json`, with legacy `registration.json` migration)
 - [x] `list_provider_links()` / `get_registration_state()` — provider link retrieval
 - [x] `write_vault_entry()` / `read_vault_entries()` — vault entry persistence with `is_private` + category filtering (backend ready; no UI consumes these yet)
-- [ ] `save_questionnaire_response()` Tauri command — mentioned in PROJECT.md, still not implemented
-- [ ] `get_transcripts(date_range?)` Tauri command — vault storage + retrieval for meeting transcripts (not implemented)
+- [x] `save_questionnaire_response()` Tauri command — upsert per `(payload_id, question_id)` into `questionnaire_responses.json`
+- [x] `get_transcripts(from?, to?)` Tauri command — Unix-seconds range filter over `transcripts.json`; plus `save_transcript()` for meeting-recording persistence and a `get_questionnaire()` helper
 
-> Note: the LLM/STT/TTS commands below exist as stubs (they log via `tracing`
-> and return `Ok` without doing work) and are already invoked from the patient
-> and provider session pages — so the frontend wiring is in place, but the
-> subprocess/inference logic is unimplemented.
+> Implemented: the LLM/STT/TTS commands below spawn real engine subprocesses
+> via `tokio::process` and stream results over Tauri events. Process lifecycles
+> are held in managed state (`LlmState`/`SttState`/`TtsState`). Binary/model
+> paths resolve through `src-tauri/src/assets.rs` (binaries from executable
+> locations, models from Persistent Storage — a Tails constraint).
 
 **LLM** (`src-tauri/src/llm/mod.rs`)
-- [ ] `llm_start_session()` — spawn llama-server/llama-cli subprocess with Qwen2.5 7B Q4 GGUF; stream tokens via `"llm://token"` Tauri events
-- [ ] `llm_send_message()` — write user turn to llama.cpp stdin or HTTP endpoint
-- [ ] `llm_stop_session()` — kill the subprocess cleanly
-- [ ] LLM tool-call dispatch — parse JSON tool-call blocks from llama.cpp output and route to vault commands (`get_vault_entries`, `get_payloads`, `get_questionnaire`, `get_transcripts`, `save_questionnaire_response`), inject tool results back into context
+- [x] `llm_start_session()` — spawn `llama-server` (`--jinja`, CPU, loopback ephemeral port), poll `/health`, seed system prompt; `role` selects temperature (patient 0.7 / provider 0.3)
+- [x] `llm_send_message()` — POST `/v1/chat/completions` with `stream:true`, parse SSE, emit `"llm://token"` per delta, emit `"llm://done"` with the full reply
+- [x] `llm_stop_session()` — kill the subprocess (also killed on state drop)
+- [x] LLM tool-call dispatch (`src-tauri/src/llm/tools.rs`) — advertise the 5 tools, reassemble streamed tool-call deltas, route to vault (`get_vault_entries`, `get_payloads`, `get_questionnaire`, `get_transcripts`, `save_questionnaire_response`), feed results back, loop (cap 5 rounds). Provider sessions force `exclude_private` and block response writes (data-layer guardrail). Unit-tested.
 
 **STT** (`src-tauri/src/stt/mod.rs`)
-- [ ] `stt_start_stream()` — spawn `whisper-stream`, read stdout partial transcripts, emit `"stt://partial"` Tauri events
-- [ ] `stt_stop_stream()` — send stop signal, collect and return final transcript
-- [ ] `stt_transcribe_file()` — spawn `whisper-cli -f <path>`, capture stdout, return full transcript (meeting recording batch mode)
+- [x] `stt_start_stream()` — spawn `whisper-stream` (SDL2 mic, VAD), clean stdout (ANSI/marker stripping), emit `"stt://partial"` with the running transcript
+- [x] `stt_stop_stream()` — kill the subprocess, return the final transcript
+- [x] `stt_transcribe_file()` — run `whisper-cli -f <path> -nt -np`, return the full transcript (meeting batch mode)
 
 **TTS** (`src-tauri/src/tts/mod.rs`)
-- [ ] `tts_synthesize()` — spawn Piper with appropriate voice model (`en`/`es`/`zh`), pipe text to stdin, emit WAV bytes via `"tts://audio"` Tauri events
-- [ ] `tts_stop()` — kill the Piper subprocess
+- [x] `tts_synthesize()` — spawn Piper for the `en`/`es`/`zh` voice, write text to stdin, emit the WAV as base64 over `"tts://audio"`
+- [x] `tts_stop()` — kill the Piper subprocess (barge-in)
 
 ---
 
@@ -80,7 +81,7 @@
 - [x] Tauri command/event wrappers (`lib/tauri/commands.ts`, `events.ts`, `env.ts`) and payload parsing helpers (`lib/payloads.ts`)
 
 **TTS audio playback**
-- [ ] Handle `"tts://audio"` Tauri events in patient and provider pages — wire up a Web Audio API player to receive and play WAV chunks as LLM speaks
+- [x] Handle `"tts://audio"` Tauri events in patient and provider pages — `lib/audio.ts` decodes/plays the base64 WAV via Web Audio API; `"llm://done"` triggers synthesis (language auto-detected), starting the mic stops playback (barge-in)
 
 **Meeting recording**
 - [ ] Record button UI in patient and provider session pages
@@ -111,7 +112,7 @@
 ---
 
 ## Rust/Tauri Binary Dependencies (build-time)
-- [ ] llama.cpp binary (`llama-server` or `llama-cli`) — needs to be compiled and placed in resources or referenced from PATH
-- [ ] whisper.cpp binaries (`whisper-stream`, `whisper-cli`) — same
-- [ ] Piper binary (`piper` from OHF-Voice/piper1-gpl) — same
-- [ ] Download scripts or Tauri build hooks to place these in `resources/` at build time
+- [x] `usb-app/scripts/fetch-assets.sh` — idempotent fetch/build of all engines + models (pinned URLs). Builds `llama.cpp` and `whisper.cpp` via CMake (whisper with `-DWHISPER_SDL2=ON` for the mic), fetches the archived Piper v1.2.0 CLI tarball, downloads the Qwen2.5 7B Q4 GGUF, Whisper `base`, and the three Piper voices.
+- [x] `tauri.conf.json` — bundles `resources/bin/*` into the `.deb` at `/usr/lib/patient-vault/bin/` and declares the `libsdl2-2.0-0` runtime dependency; `assets.rs` resolves these at runtime.
+- [ ] Run `fetch-assets.sh` on the build host and commit/stage binaries into `resources/bin/` before packaging (binaries are git-ignored; produced per build host).
+- [ ] On Tails: place model files in `~/Persistent/patient-vault/models/` (or set `PATIENT_VAULT_MODEL_DIR`) — see SETUP.md "AI Engines" + "Tails verification checklist".

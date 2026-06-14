@@ -1,3 +1,4 @@
+pub mod assets;
 pub mod crypto;
 pub mod sync;
 pub mod vault;
@@ -101,6 +102,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
+        .manage(llm::LlmState::default())
+        .manage(stt::SttState::default())
+        .manage(tts::TtsState::default())
         .invoke_handler(tauri::generate_handler![
             // vault
             vault::vault_exists,
@@ -114,6 +118,9 @@ pub fn run() {
             vault::register_patient,
             vault::get_registration_state,
             vault::list_provider_links,
+            vault::get_transcripts,
+            vault::save_transcript,
+            vault::save_questionnaire_response,
             // llm
             llm::llm_start_session,
             llm::llm_send_message,

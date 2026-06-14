@@ -40,13 +40,22 @@ export interface RegistrationState {
 
 export interface ProviderLink {
   provider_id: string;
+  /** Patient-assigned local label for the provider (e.g. "Dr. Patel"). */
+  display_name: string;
   patient_name: string;
   registered_at: string;
 }
 
-/** Register with a provider using a 6-digit pairing code shown in the provider portal. */
-export async function registerPatient(patientName: string, providerCode: string): Promise<void> {
-  return tauriInvoke('register_patient', { patientName, providerCode });
+/**
+ * Pair with a provider using a 6-digit code shown in the provider portal.
+ * `displayName` is the patient's local label for the provider.
+ */
+export async function registerPatient(
+  patientName: string,
+  providerCode: string,
+  displayName: string
+): Promise<void> {
+  return tauriInvoke('register_patient', { patientName, providerCode, displayName });
 }
 
 /** List all providers this device is paired with. */
@@ -109,9 +118,15 @@ export async function readPayloads(filter: PayloadFilter): Promise<DecryptedPayl
 
 // ── LLM ───────────────────────────────────────────────────────────────────────
 
-/** Start a new LLM session with the given system prompt. Tokens stream via Tauri event "llm://token". */
-export async function llmStartSession(systemPrompt: string): Promise<void> {
-  return tauriInvoke('llm_start_session', { systemPrompt });
+/** Session role — selects sampling temperature and guardrail filtering. */
+export type LlmRole = 'patient' | 'provider';
+
+/**
+ * Start a new LLM session with the given system prompt and role.
+ * Tokens stream via "llm://token"; the full reply arrives on "llm://done".
+ */
+export async function llmStartSession(systemPrompt: string, role: LlmRole): Promise<void> {
+  return tauriInvoke('llm_start_session', { systemPrompt, role });
 }
 
 /** Send a user message to the running LLM session. Response streams via "llm://token". */

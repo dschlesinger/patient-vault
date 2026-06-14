@@ -20,6 +20,8 @@ Both are pnpm workspace packages managed from the repo root.
 | pnpm | 10+ | `npm install -g pnpm` |
 | Rust (stable) | Latest stable | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
 | Tauri system libs (Linux) | — | `sudo apt install libdbus-1-dev libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev pkg-config` |
+| Engine build tools (for `fetch-assets.sh`) | — | `sudo apt install git cmake build-essential libsdl2-dev` |
+| SDL2 runtime (mic capture for `whisper-stream`) | — | `sudo apt install libsdl2-2.0-0` |
 
 **Note**: `liboqs` is NOT required. PatientVault uses the pure-Rust `ml-kem` crate (RustCrypto, FIPS 203) with no C dependencies — Tails OS compatible.
 
@@ -144,38 +146,80 @@ pnpm build:usb
 
 ---
 
-## Model Assets (USB App)
+## AI Engines (LLM / STT / TTS)
 
-Large binary files are gitignored. Download and place them manually:
+The USB app runs three local engines as child processes — no network, all on-device:
 
-| Asset | Destination |
+| Subsystem | Engine | Model |
+|---|---|---|
+| LLM (chat + tool calls) | `llama-server` (llama.cpp) over loopback HTTP | Qwen2.5 7B Instruct Q4_K_M GGUF |
+| STT (speech→text) | `whisper-stream` (live) / `whisper-cli` (batch) | Whisper `base` multilingual |
+| TTS (text→speech) | `piper` (rhasspy v1.2.0 CLI) | Piper voices (en/es/zh) |
+
+**Two asset classes, two locations** (a Tails constraint — see below):
+
+- **Binaries** (`llama-server`, `whisper-stream`, `whisper-cli`, `piper` + their `.so` libs) → `usb-app/src-tauri/resources/bin/`. These are bundled into the `.deb` and installed to `/usr/lib/patient-vault/bin/` (an *executable* location).
+- **Models** (GGUF, `ggml-base.bin`, Piper `.onnx`/`.onnx.json`) → `usb-app/src-tauri/resources/models/{llm,whisper,piper}/` for development, or Persistent Storage for Tails. These are read-only *data*, never executed.
+
+### One-command fetch
+
+All large files are gitignored. Download/build them with:
+
+```bash
+cd usb-app
+./scripts/fetch-assets.sh            # models + all three engine binaries (idempotent)
+# or selectively:
+./scripts/fetch-assets.sh models     # models only
+./scripts/fetch-assets.sh llama      # just llama-server
+./scripts/fetch-assets.sh whisper    # just whisper-stream + whisper-cli (needs libsdl2-dev)
+./scripts/fetch-assets.sh piper      # just the Piper CLI
+```
+
+The script downloads Qwen2.5 GGUF (bartowski), Whisper `ggml-base.bin` (ggerganov), and Piper voices (rhasspy/piper-voices); it builds `llama.cpp` and `whisper.cpp` from source (CMake, `whisper-stream` with `-DWHISPER_SDL2=ON`) and extracts the pinned Piper v1.2.0 release. URLs/tags are pinned at the top of the script — re-verify before a release.
+
+### Path resolution overrides (dev/test)
+
+`src-tauri/src/assets.rs` resolves binaries and models from several locations. Override either for development without touching the bundle:
+
+| Env var | Purpose |
 |---|---|
-| `Qwen2.5-7B-Instruct-Q4_K_M.gguf` | `usb-app/src-tauri/resources/models/` |
-| `ggml-base.bin` (whisper base multilingual) | `usb-app/src-tauri/resources/whisper/` |
-| `en_US-lessac-medium.onnx` + `.json` | `usb-app/src-tauri/resources/piper-voices/` |
-| `es_MX-ald-medium.onnx` + `.json` | `usb-app/src-tauri/resources/piper-voices/` |
-| `zh_CN-huayan-medium.onnx` + `.json` | `usb-app/src-tauri/resources/piper-voices/` |
+| `PATIENT_VAULT_BIN_DIR` | Directory containing the engine binaries |
+| `PATIENT_VAULT_MODEL_DIR` | Directory containing `llm/`, `whisper/`, `piper/` model subdirs |
 
-Sources:
-- Qwen2.5 GGUF: https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF
-- whisper base: https://huggingface.co/ggerganov/whisper.cpp
-- Piper voices: https://huggingface.co/rhasspy/piper-voices
-
-The Piper binary itself comes from https://github.com/OHF-Voice/piper1-gpl (maintained fork of rhasspy/piper, archived Oct 2025).
+Models also resolve automatically from `~/Persistent/patient-vault/models/` (Tails).
 
 ---
 
 ## Tails OS Deployment
 
+PatientVault is designed for Tails' security model:
+
+- **Binaries run from an executable location.** Tails mounts Persistent Storage and `$HOME` `noexec`, so the engine binaries are bundled into the `.deb` and installed to `/usr/lib/patient-vault/bin/`. The model *data* files live in Persistent Storage (no execution, room for multi-GB files).
+- **LLM uses loopback HTTP.** `llama-server` binds `127.0.0.1` on an ephemeral port (Tor-reserved ports are avoided); loopback is permitted for the `amnesia` user.
+- **Microphone is unmediated** for the `amnesia` user, so `whisper-stream` captures directly via SDL2.
+
 ```bash
-# Build the .deb package
+# 1. Build the .deb (binaries must already be in resources/bin — run fetch-assets.sh first)
 pnpm build:usb
 
-# Install on Tails via "Additional Software" (survives reboots)
+# 2. Install on Tails via "Additional Software" (survives reboots)
 sudo apt install ./usb-app/src-tauri/target/release/bundle/deb/patient-vault-usb_*.deb
+
+# 3. Place models in Persistent Storage (run once, from a machine with network)
+MODELS_DIR="$HOME/Persistent/patient-vault/models" ./usb-app/scripts/fetch-assets.sh models
 ```
 
 The app writes the patient keypair and vault to `~/Persistent/patient-vault/` (Tails Persistent Storage).
+
+### Tails verification checklist (validate on real hardware)
+
+These could not be verified outside Tails and must be checked on-device:
+
+- [ ] **CPU baseline** — build the llama.cpp/whisper.cpp binaries with `-DGGML_NATIVE=OFF` (the script does this) so they don't use instructions absent on the target CPU. Confirm they run.
+- [ ] **SDL2** — `libsdl2-2.0-0` is declared as a `.deb` dependency; confirm `whisper-stream` finds it (or static-link SDL2 if "Additional Software" can't pull it).
+- [ ] **AppArmor** — confirm no profile blocks `/usr/lib/patient-vault/bin/*` execution or loopback.
+- [ ] **Additional Software persistence** — confirm the locally-installed `.deb` is re-applied across reboots.
+- [ ] **RAM** — Qwen 7B Q4 needs ~5–6 GB resident; confirm headroom on the target machine.
 
 ---
 
@@ -196,7 +240,8 @@ Rust is required for USB app compilation. After installing Rust:
 ```bash
 cd usb-app/src-tauri
 cargo check        # fast type-check without linking
-cargo clippy -- -D warnings   # lint
+cargo clippy       # lint
+cargo test --lib   # unit tests (assets, llm SSE/tools, stt cleaning, tts, crypto)
 ```
 
-The Rust module stubs (`crypto/`, `vault/`, `llm/`, `stt/`, `tts/`) use `todo!()` for unimplemented bodies. `cargo check` will succeed; `cargo build` will panic at runtime on unimplemented functions.
+The `crypto/`, `vault/`, `llm/`, `stt/`, and `tts/` modules are implemented. The LLM/STT/TTS commands spawn their engine subprocesses on demand; if a binary or model is missing they return a descriptive error (the patient/provider pages surface it and fall back to preview mode), so the app still builds and runs without the assets installed.

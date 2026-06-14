@@ -6,6 +6,7 @@
   import MessagesPanel from '$lib/components/MessagesPanel.svelte';
   import QuestionnairesPanel from '$lib/components/QuestionnairesPanel.svelte';
   import DocumentsPanel from '$lib/components/DocumentsPanel.svelte';
+  import ProvidersPanel from '$lib/components/ProvidersPanel.svelte';
   import { session } from '$lib/stores/session.svelte';
   import { chat } from '$lib/stores/chat.svelte';
   import {
@@ -14,6 +15,8 @@
     llmStopSession,
     sttStartStream,
     sttStopStream,
+    ttsSynthesize,
+    ttsStop,
     syncPayloads,
     readPayloads,
     listProviderLinks,
@@ -22,13 +25,22 @@
     type ProviderLink
   } from '$lib/tauri/commands';
   import { listenWhenTauri } from '$lib/tauri/events';
-  import { messagePayloads, questionnairePayloads, documentPayloads, type SessionTab } from '$lib/payloads';
+  import { playWavBase64, stopAudio, detectTtsLanguage } from '$lib/audio';
+  import {
+    messagePayloads,
+    questionnairePayloads,
+    documentPayloads,
+    PATIENT_SESSION_TABS,
+    type SessionTab
+  } from '$lib/payloads';
   import { onMount, onDestroy } from 'svelte';
   import type { UnlistenFn } from '@tauri-apps/api/event';
   import { MOCK_PATIENT_MESSAGES, MOCK_PAYLOADS, MOCK_PROVIDER_LINKS } from '$lib/mock/data';
 
   let unlistenLlm: UnlistenFn | null = null;
   let unlistenStt: UnlistenFn | null = null;
+  let unlistenLlmDone: UnlistenFn | null = null;
+  let unlistenTts: UnlistenFn | null = null;
   let newPayloadCount = $state(0);
   let payloads = $state<DecryptedPayload[]>([]);
   let providerLinks = $state<ProviderLink[]>([]);
@@ -41,6 +53,18 @@
   const messages = $derived(messagePayloads(payloads));
   const questionnaires = $derived(questionnairePayloads(payloads));
   const documents = $derived(documentPayloads(payloads));
+
+  async function refreshProviderLinks() {
+    if (!isTauriAvailable()) {
+      providerLinks = MOCK_PROVIDER_LINKS;
+      return;
+    }
+    try {
+      providerLinks = await listProviderLinks();
+    } catch (e) {
+      syncError = String(e);
+    }
+  }
 
   async function refreshPayloads() {
     if (!isTauriAvailable()) {
@@ -94,7 +118,7 @@
       providerLinks = await listProviderLinks();
       await refreshPayloads();
 
-      await llmStartSession(PATIENT_SYSTEM_PROMPT);
+      await llmStartSession(PATIENT_SYSTEM_PROMPT, 'patient');
 
       unlistenLlm = await listenWhenTauri<string>('llm://token', (token) => {
         const lastMsg = chat.messages.at(-1);
@@ -110,6 +134,18 @@
         chat.setStreamingTranscript(transcript);
       });
 
+      // When a reply completes, speak it aloud via Piper TTS.
+      unlistenLlmDone = await listenWhenTauri<string>('llm://done', (content) => {
+        const text = content.trim();
+        if (text) {
+          ttsSynthesize(text, detectTtsLanguage(text)).catch(() => {});
+        }
+      });
+
+      unlistenTts = await listenWhenTauri<string>('tts://audio', (wavBase64) => {
+        playWavBase64(wavBase64).catch(() => {});
+      });
+
       chat.addMessage('assistant', 'Hello! I\'m here to help you manage your health information. What would you like to do today?');
     } catch (e) {
       syncError = String(e);
@@ -120,6 +156,12 @@
   onDestroy(async () => {
     unlistenLlm?.();
     unlistenStt?.();
+    unlistenLlmDone?.();
+    unlistenTts?.();
+    stopAudio();
+    try {
+      await ttsStop();
+    } catch {}
     try {
       await llmStopSession();
     } catch {}
@@ -140,6 +182,11 @@
         }
       } catch {}
     } else {
+      // Barge-in: cut off any TTS playback when the patient starts speaking.
+      stopAudio();
+      try {
+        await ttsStop();
+      } catch {}
       chat.setMicActive(true);
       try {
         await sttStartStream();
@@ -173,9 +220,11 @@
 
   <SessionTabBar
     {activeTab}
+    tabs={PATIENT_SESSION_TABS}
     messageCount={messages.length}
     questionnaireCount={questionnaires.length}
     documentCount={documents.length}
+    providerCount={providerLinks.length}
     onchange={(tab) => (activeTab = tab)}
   />
 
@@ -213,8 +262,10 @@
       <MessagesPanel payloads={messages} {providerLinks} />
     {:else if activeTab === 'questionnaires'}
       <QuestionnairesPanel payloads={questionnaires} {providerLinks} showChatHint />
-    {:else}
+    {:else if activeTab === 'documents'}
       <DocumentsPanel payloads={documents} {providerLinks} />
+    {:else}
+      <ProvidersPanel {providerLinks} onRefresh={refreshProviderLinks} />
     {/if}
   </div>
 

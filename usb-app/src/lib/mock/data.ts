@@ -38,8 +38,15 @@ export const MOCK_PROVIDER_MESSAGES: ChatMessage[] = [
 export const MOCK_PROVIDER_LINKS: ProviderLink[] = [
   {
     provider_id: 'provider-patel',
+    display_name: 'Dr. Patel (Cardiology)',
     patient_name: 'Maria Gonzalez',
     registered_at: String(Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60)
+  },
+  {
+    provider_id: 'provider-nguyen',
+    display_name: 'Dr. Nguyen (Primary care)',
+    patient_name: 'Maria Gonzalez',
+    registered_at: String(Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60)
   }
 ];
 
@@ -90,5 +97,28 @@ export const MOCK_PAYLOADS: DecryptedPayload[] = [
     }),
     provider_id: 'provider-patel',
     received_at: new Date(Date.now() - 6 * 60 * 60_000).toISOString()
+  },
+  {
+    id: 'mock-msg-2',
+    type: 'message',
+    content: JSON.stringify({
+      content:
+        'Hi Maria — this is your primary care office. Please complete the intake questionnaire before your annual physical next week.'
+    }),
+    provider_id: 'provider-nguyen',
+    received_at: new Date(Date.now() - 3 * 60 * 60_000).toISOString()
+  },
+  {
+    id: 'mock-quest-2',
+    type: 'questionnaire',
+    content: JSON.stringify({
+      questions: [
+        'Have there been any changes to your medications since your last visit?',
+        'Are you up to date on your vaccinations?',
+        'Any concerns you would like to discuss at your physical?'
+      ]
+    }),
+    provider_id: 'provider-nguyen',
+    received_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString()
   }
 ];

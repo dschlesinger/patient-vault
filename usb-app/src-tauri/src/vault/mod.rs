@@ -69,6 +69,11 @@ fn payloads_path() -> PathBuf {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ProviderLink {
     pub provider_id: String,
+    /// Patient-assigned, human-readable name for this provider (e.g. "Dr. Patel").
+    /// Stored locally only — never sent to Supabase. `serde(default)` keeps older
+    /// `providers.json` files (written before this field existed) loadable.
+    #[serde(default)]
+    pub display_name: String,
     pub patient_name: String,
     pub registered_at: String,
 }
@@ -186,12 +191,21 @@ fn read_all_entries() -> Result<Vec<VaultEntry>, String> {
 }
 
 /// Register this device with a provider using a 6-digit pairing code.
+/// `display_name` is the patient's local label for the provider (e.g. "Dr. Patel").
 #[tauri::command]
-pub async fn register_patient(patient_name: String, provider_code: String) -> Result<(), String> {
+pub async fn register_patient(
+    patient_name: String,
+    provider_code: String,
+    display_name: String,
+) -> Result<(), String> {
     let name = patient_name.trim();
     let code = provider_code.trim();
+    let label = display_name.trim();
     if name.is_empty() {
         return Err("Patient name is required.".to_string());
+    }
+    if label.is_empty() {
+        return Err("A name for this provider is required.".to_string());
     }
     if code.len() != 6 || !code.chars().all(|c| c.is_ascii_digit()) {
         return Err("Pairing code must be 6 digits.".to_string());
@@ -204,6 +218,7 @@ pub async fn register_patient(patient_name: String, provider_code: String) -> Re
 
     let link = ProviderLink {
         provider_id,
+        display_name: label.to_string(),
         patient_name: name.to_string(),
         registered_at: chrono_now(),
     };
@@ -217,6 +232,7 @@ fn upsert_provider_link(link: ProviderLink) -> Result<(), String> {
         .iter_mut()
         .find(|l| l.provider_id == link.provider_id)
     {
+        existing.display_name = link.display_name;
         existing.patient_name = link.patient_name;
         existing.registered_at = link.registered_at;
     } else {
@@ -239,6 +255,7 @@ fn read_provider_links() -> Result<Vec<ProviderLink>, String> {
         let old: RegistrationState = serde_json::from_str(&json).map_err(|e| e.to_string())?;
         let migrated = vec![ProviderLink {
             provider_id: String::new(),
+            display_name: "Your provider".to_string(),
             patient_name: old.patient_name,
             registered_at: old.registered_at,
         }];
@@ -352,5 +369,157 @@ pub fn read_payloads(filter: PayloadFilter) -> Result<Vec<DecryptedPayload>, Str
             }
             true
         })
+        .collect())
+}
+
+/// Return a single questionnaire payload by id, or `None` if not found.
+/// Used by the LLM `get_questionnaire` tool to walk through questions.
+pub fn get_questionnaire(payload_id: &str) -> Result<Option<DecryptedPayload>, String> {
+    let payloads = read_all_payloads()?;
+    Ok(payloads
+        .into_iter()
+        .find(|p| p.id == payload_id && p.payload_type == "questionnaire"))
+}
+
+// ── Meeting transcripts ─────────────────────────────────────────────────────────
+
+fn transcripts_path() -> PathBuf {
+    vault_dir().join("transcripts.json")
+}
+
+/// A locally stored meeting-recording transcript.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Transcript {
+    pub id: String,
+    pub title: String,
+    /// Unix seconds (as a string) when the transcript was saved.
+    pub created_at: String,
+    pub content: String,
+}
+
+fn read_all_transcripts() -> Result<Vec<Transcript>, String> {
+    let path = transcripts_path();
+    if !path.exists() {
+        return Ok(vec![]);
+    }
+    let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&json).map_err(|e| e.to_string())
+}
+
+/// Fetch meeting transcripts, optionally bounded by a `from`/`to` Unix-second
+/// window (inclusive). Unparsable bounds are ignored rather than erroring, so a
+/// best-effort range from the LLM still returns useful results.
+#[tauri::command]
+pub fn get_transcripts(
+    from: Option<String>,
+    to: Option<String>,
+) -> Result<Vec<Transcript>, String> {
+    let from_secs = from.as_deref().and_then(|s| s.trim().parse::<i64>().ok());
+    let to_secs = to.as_deref().and_then(|s| s.trim().parse::<i64>().ok());
+    Ok(read_all_transcripts()?
+        .into_iter()
+        .filter(|t| {
+            let secs = t.created_at.parse::<i64>().unwrap_or(0);
+            if let Some(lo) = from_secs {
+                if secs < lo {
+                    return false;
+                }
+            }
+            if let Some(hi) = to_secs {
+                if secs > hi {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect())
+}
+
+/// Persist a meeting-recording transcript to the local vault. Returns its id.
+#[tauri::command]
+pub fn save_transcript(title: String, content: String) -> Result<String, String> {
+    let mut transcripts = read_all_transcripts()?;
+    let now = chrono_now();
+    let id = format!("transcript-{}-{}", now, transcripts.len());
+    transcripts.push(Transcript {
+        id: id.clone(),
+        title: if title.trim().is_empty() {
+            "Untitled meeting".to_string()
+        } else {
+            title.trim().to_string()
+        },
+        created_at: now,
+        content,
+    });
+    std::fs::create_dir_all(vault_dir()).map_err(|e| e.to_string())?;
+    let json = serde_json::to_string_pretty(&transcripts).map_err(|e| e.to_string())?;
+    std::fs::write(transcripts_path(), json).map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
+// ── Questionnaire responses ─────────────────────────────────────────────────────
+
+fn responses_path() -> PathBuf {
+    vault_dir().join("questionnaire_responses.json")
+}
+
+/// A patient's saved answer to one questionnaire question.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct QuestionnaireResponse {
+    pub payload_id: String,
+    pub question_id: String,
+    pub response: String,
+    /// Unix seconds (as a string) when the answer was recorded.
+    pub answered_at: String,
+}
+
+fn read_all_responses() -> Result<Vec<QuestionnaireResponse>, String> {
+    let path = responses_path();
+    if !path.exists() {
+        return Ok(vec![]);
+    }
+    let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&json).map_err(|e| e.to_string())
+}
+
+/// Save (or replace) a patient's voice response to a questionnaire question.
+/// A later answer to the same (`payload_id`, `question_id`) overwrites the prior.
+#[tauri::command]
+pub fn save_questionnaire_response(
+    payload_id: String,
+    question_id: String,
+    response: String,
+) -> Result<(), String> {
+    if payload_id.trim().is_empty() || question_id.trim().is_empty() {
+        return Err("payload_id and question_id are required.".to_string());
+    }
+    let mut responses = read_all_responses()?;
+    let answered_at = chrono_now();
+    if let Some(existing) = responses
+        .iter_mut()
+        .find(|r| r.payload_id == payload_id && r.question_id == question_id)
+    {
+        existing.response = response;
+        existing.answered_at = answered_at;
+    } else {
+        responses.push(QuestionnaireResponse {
+            payload_id,
+            question_id,
+            response,
+            answered_at,
+        });
+    }
+    std::fs::create_dir_all(vault_dir()).map_err(|e| e.to_string())?;
+    let json = serde_json::to_string_pretty(&responses).map_err(|e| e.to_string())?;
+    std::fs::write(responses_path(), json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Read all saved questionnaire responses for a specific questionnaire payload.
+/// Used by the LLM/provider debrief to report what the patient answered.
+pub fn read_responses_for(payload_id: &str) -> Result<Vec<QuestionnaireResponse>, String> {
+    Ok(read_all_responses()?
+        .into_iter()
+        .filter(|r| r.payload_id == payload_id)
         .collect())
 }

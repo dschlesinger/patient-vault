@@ -429,10 +429,13 @@ Connects AI tools directly to your Supabase project for schema management, query
 
 **Why it fits**: Designed specifically for CPU-realtime inference on low-power hardware (originally targeting Raspberry Pi 4) — well within the performance envelope of a laptop running Tails. VITS-based ONNX models, ~20-60MB per voice, no cloud dependency, offline-first.
 
-**Note**: The original `rhasspy/piper` repository was archived in October 2025. Development has moved to `OHF-Voice/piper1-gpl`. Reference the new repo for current builds.
+**Note**: The original `rhasspy/piper` repository was archived in October 2025; active development moved to `OHF-Voice/piper1-gpl` (a Python package). PatientVault deliberately uses the **archived `rhasspy/piper` v1.2.0 standalone C++ CLI binary** (release tag `2023.11.14-2`) — it is a single dependency-free executable that reads text on stdin and writes a WAV, which is the simplest, most Tails-friendly integration for a spawned subprocess. The USB app reads the resulting WAV and plays it via the Web Audio API (one `tts://audio` event per clip). See `usb-app/scripts/fetch-assets.sh` for the pinned download.
+
+**Implementation**: `usb-app/src-tauri/src/tts/mod.rs` spawns `piper --model <voice> --output_file <tmp.wav>`, then emits the WAV as base64. Barge-in is supported: starting the mic kills any in-flight Piper process and stops playback.
 
 **MCP**: ❌ No official MCP.
-**Docs (new repo)**: https://github.com/OHF-Voice/piper1-gpl
+**Archived CLI (in use)**: https://github.com/rhasspy/piper (release `2023.11.14-2`)
+**Maintained successor**: https://github.com/OHF-Voice/piper1-gpl
 **Voice models**: https://huggingface.co/rhasspy/piper-voices
 
 ---

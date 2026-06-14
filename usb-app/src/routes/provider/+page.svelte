@@ -14,6 +14,8 @@
     llmStopSession,
     sttStartStream,
     sttStopStream,
+    ttsSynthesize,
+    ttsStop,
     syncPayloads,
     readPayloads,
     listProviderLinks,
@@ -22,6 +24,7 @@
     type ProviderLink
   } from '$lib/tauri/commands';
   import { listenWhenTauri } from '$lib/tauri/events';
+  import { playWavBase64, stopAudio, detectTtsLanguage } from '$lib/audio';
   import { messagePayloads, questionnairePayloads, documentPayloads, type SessionTab } from '$lib/payloads';
   import { onMount, onDestroy } from 'svelte';
   import type { UnlistenFn } from '@tauri-apps/api/event';
@@ -31,6 +34,8 @@
 
   let unlistenLlm: UnlistenFn | null = null;
   let unlistenStt: UnlistenFn | null = null;
+  let unlistenLlmDone: UnlistenFn | null = null;
+  let unlistenTts: UnlistenFn | null = null;
   let payloads = $state<DecryptedPayload[]>([]);
   let providerLinks = $state<ProviderLink[]>([]);
   let syncError = $state<string | null>(null);
@@ -74,7 +79,7 @@
     try {
       providerLinks = await listProviderLinks();
       await refreshPayloads();
-      await llmStartSession(PROVIDER_SYSTEM_PROMPT);
+      await llmStartSession(PROVIDER_SYSTEM_PROMPT, 'provider');
 
       unlistenLlm = await listenWhenTauri<string>('llm://token', (token) => {
         const lastMsg = chat.messages.at(-1);
@@ -90,6 +95,17 @@
         chat.setStreamingTranscript(transcript);
       });
 
+      unlistenLlmDone = await listenWhenTauri<string>('llm://done', (content) => {
+        const text = content.trim();
+        if (text) {
+          ttsSynthesize(text, detectTtsLanguage(text)).catch(() => {});
+        }
+      });
+
+      unlistenTts = await listenWhenTauri<string>('tts://audio', (wavBase64) => {
+        playWavBase64(wavBase64).catch(() => {});
+      });
+
       chat.addMessage('assistant', 'Good day. I\'m here to help with this patient\'s visit. Patient data is filtered according to their privacy settings. How can I assist?');
     } catch {
       payloads = MOCK_PAYLOADS;
@@ -100,6 +116,12 @@
   onDestroy(async () => {
     unlistenLlm?.();
     unlistenStt?.();
+    unlistenLlmDone?.();
+    unlistenTts?.();
+    stopAudio();
+    try {
+      await ttsStop();
+    } catch {}
     try {
       await llmStopSession();
     } catch {}
@@ -120,6 +142,11 @@
         }
       } catch {}
     } else {
+      // Barge-in: cut off any TTS playback when speaking starts.
+      stopAudio();
+      try {
+        await ttsStop();
+      } catch {}
       chat.setMicActive(true);
       try {
         await sttStartStream();

@@ -1,12 +1,19 @@
 import type { DecryptedPayload } from '$lib/tauri/commands';
 
-export type SessionTab = 'chat' | 'messages' | 'questionnaires' | 'documents';
+export type SessionTab = 'chat' | 'messages' | 'questionnaires' | 'documents' | 'providers';
 
+/** Tabs for the provider session (no provider-management tab). */
 export const SESSION_TABS: [SessionTab, string][] = [
 	['chat', 'Chat'],
 	['messages', 'Messages'],
 	['questionnaires', 'Questionnaires'],
 	['documents', 'Documents']
+];
+
+/** Tabs for the patient session — includes provider connection/management. */
+export const PATIENT_SESSION_TABS: [SessionTab, string][] = [
+	...SESSION_TABS,
+	['providers', 'Providers']
 ];
 
 export interface DocumentMeta {
@@ -80,19 +87,24 @@ export function fileTypeLabel(mime?: string): string {
 	return mime.split('/').pop()?.toUpperCase() ?? 'File';
 }
 
-/** Short label for a provider id (from local provider links or payload metadata). */
+/**
+ * Human-readable label for the provider a payload came from, using the patient's
+ * assigned `display_name`. Falls back gracefully for legacy links (empty
+ * `provider_id`) or providers no longer in the local link list.
+ */
 export function providerLabel(
 	providerId: string,
-	links: { provider_id: string }[] = []
+	links: { provider_id: string; display_name?: string }[] = []
 ): string {
-	if (!providerId) {
-		if (links.length === 1 && !links[0].provider_id) return 'Your provider';
-		return 'Provider';
+	const match = links.find((l) => l.provider_id === providerId);
+	if (match?.display_name) return match.display_name;
+
+	// Legacy single-provider link stored before display_name existed.
+	if (!providerId && links.length === 1 && links[0].display_name) {
+		return links[0].display_name;
 	}
-	if (links.length <= 1) return 'Your provider';
-	const index = links.findIndex((l) => l.provider_id === providerId);
-	if (index >= 0) return `Provider ${index + 1}`;
-	return `Provider ${providerId.slice(0, 8)}…`;
+	if (!providerId) return 'Your provider';
+	return 'Unknown provider';
 }
 
 export function formatRegisteredAt(value: string): string {
