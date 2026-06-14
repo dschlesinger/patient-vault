@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+.svelte-kit/
+build/
+dist/
+
+# Tauri
+usb-app/src-tauri/target/
+usb-app/src-tauri/WixTools/
+usb-app/src-tauri/gen/
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Local vault runtime data — NEVER commit (contains private keys + decrypted PHI)
+.vault/
+
+# Model assets (large binary files — download separately per SETUP.md)
+*.gguf
+*.onnx
+*.onnx.json
+*.bin
+piper-voices/
+whisper-models/
+
+# Bundled engine binaries + their shared libs (built/downloaded via fetch-assets.sh).
+# Keep the directory (.gitkeep) but never commit the executables/libraries.
+usb-app/src-tauri/resources/bin/*
+!usb-app/src-tauri/resources/bin/.gitkeep
+# espeak-ng data shipped with the Piper binary
+espeak-ng-data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

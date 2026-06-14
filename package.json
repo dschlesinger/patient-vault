@@ -1,0 +1,13 @@
+{
+  "name": "patient-vault",
+  "private": true,
+  "packageManager": "pnpm@11.5.2",
+  "scripts": {
+    "dev:provider": "pnpm --filter provider-frontend dev",
+    "dev:usb": "pnpm --filter usb-app tauri dev",
+    "build:provider": "pnpm --filter provider-frontend build",
+    "build:usb": "pnpm --filter usb-app tauri build",
+    "check:provider": "pnpm --filter provider-frontend check",
+    "check:usb": "pnpm --filter usb-app check"
+  }
+}
